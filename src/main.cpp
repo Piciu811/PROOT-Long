@@ -4,6 +4,7 @@
 #include <BLEDevice.h>
 #include <BLEScan.h>
 #include <BLEClient.h>
+#include <Preferences.h>
 #include <Wire.h>
 
 extern uint32_t transfer_num;
@@ -17,6 +18,8 @@ static int bleSeen=0;
 static bool touchDown=false;
 static bool rbConnected=false;
 static String connectedAddr="";
+static Preferences prefs;
+static String savedRbAddr="";
 #define TOUCH_ADDR 0x3B
 #define TOUCH_SCL 10
 #define TOUCH_SDA 15
@@ -83,6 +86,10 @@ static void scanRaceBoxes(){
   }
   scan->clearResults();
 }
+static void saveRaceBox(const String &addr){
+  prefs.begin("proot",false); prefs.putString("rbAddr",addr); prefs.end();
+  savedRbAddr=addr;
+}
 static bool connectSelectedRaceBox(){
   if(selectedRacebox<0 || selectedRacebox>=raceboxCount) return false;
   BLEClient *client=BLEDevice::createClient();
@@ -96,6 +103,7 @@ static bool connectSelectedRaceBox(){
     client->disconnect(); delete client; return false;
   }
   rbConnected=true; connectedAddr=raceboxAddr[selectedRacebox];
+  saveRaceBox(connectedAddr);
   Serial.printf("RACEBOX CONFIRMED: %s\\n",connectedAddr.c_str());
   // Keep client allocated/connected for the next step (characteristic subscription).
   return true;
@@ -178,7 +186,16 @@ void setup(){
 
   present();
   Serial.println("PROOT UI SKELETON SENT");
+  prefs.begin("proot",true); savedRbAddr=prefs.getString("rbAddr",""); prefs.end();
   scanRaceBoxes();
+  // PRÖÖT-style behavior: prefer the previously selected RaceBox address.
+  if(savedRbAddr.length()){
+    for(int i=0;i<raceboxCount;i++) if(raceboxAddr[i].equalsIgnoreCase(savedRbAddr)){
+      selectedRacebox=i;
+      Serial.printf("Saved RaceBox found at row %d: %s\\n",i+1,savedRbAddr.c_str());
+      break;
+    }
+  }
   Serial.printf("RaceBox found: %d\\n",raceboxCount);
   for(int i=0;i<raceboxCount;i++) Serial.printf("%c %d: %s %s\\n",i==selectedRacebox?'>':' ',i+1,raceboxes[i].c_str(),raceboxAddr[i].c_str());
   while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
