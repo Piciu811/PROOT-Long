@@ -1,11 +1,16 @@
 #include <Arduino.h>
 #include "AXS15231B.h"
 #include "esp_heap_caps.h"
+#include <BLEDevice.h>
+#include <BLEScan.h>
 
 extern uint32_t transfer_num;
 extern size_t lcd_PushColors_len;
 
 static uint16_t *nativeFrame=nullptr,*screen=nullptr;
+static String raceboxes[8];
+static String raceboxAddr[8];
+static int raceboxCount=0, selectedRacebox=0;
 static inline uint16_t C(uint16_t v){ return (uint16_t)((v<<8)|(v>>8)); }
 
 static void rect(int x,int y,int w,int h,uint16_t c){
@@ -31,6 +36,23 @@ static void glyph(int x,int y,int id,int s,uint16_t col){
 static void num(int x,int y,const char*t,int s,uint16_t col){
   while(*t){ int id=-1; if(*t>='0'&&*t<='9')id=*t-'0'; else if(*t==':')id=10; else if(*t=='.')id=11;
     if(id>=0)glyph(x,y,id,s,col); x+=6*s; t++; }
+}
+static void scanRaceBoxes(){
+  BLEDevice::init("");
+  BLEScan *scan=BLEDevice::getScan();
+  scan->setActiveScan(true);
+  BLEScanResults found=scan->start(5,false);
+  raceboxCount=0;
+  for(int i=0;i<found.getCount() && raceboxCount<8;i++){
+    BLEAdvertisedDevice d=found.getDevice(i);
+    String name=d.haveName()?String(d.getName().c_str()):String("");
+    if(name.indexOf("RaceBox")>=0 || name.indexOf("RACEBOX")>=0){
+      raceboxes[raceboxCount]=name.length()?name:String("RaceBox");
+      raceboxAddr[raceboxCount]=String(d.getAddress().toString().c_str());
+      raceboxCount++;
+    }
+  }
+  scan->clearResults();
 }
 void setup(){
   Serial.begin(115200); delay(200);
@@ -58,6 +80,9 @@ void setup(){
 
   present();
   Serial.println("PROOT UI SKELETON SENT");
+  scanRaceBoxes();
+  Serial.printf("RaceBox found: %d\n",raceboxCount);
+  for(int i=0;i<raceboxCount;i++) Serial.printf("%c %d: %s %s\n",i==selectedRacebox?'>':' ',i+1,raceboxes[i].c_str(),raceboxAddr[i].c_str());
 }
 void loop(){
   if(transfer_num<=1&&lcd_PushColors_len>0)lcd_PushColors(0,0,0,0,NULL);
