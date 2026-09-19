@@ -1,34 +1,42 @@
 name: Build PROOT Long
+
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install PlatformIO
+
+      - name: Install PlatformIO and esptool
         run: |
-              pip install platformio
-              pip install 'click<8.2' esptool
-    
+          pip install platformio
+          pip install 'click<8.2' esptool
+
       - name: Build
         run: pio run -e proot-long
+
       - name: Create merged image
         run: |
-              python -m esptool --chip esp32s3 merge-bin \
-              -o PROOT-Long-HW-Test-merged.bin \
-              --flash-mode qio \
-              --flash-freq 80m \
-              --flash-size 16MB \
-              0x0000 .pio/build/proot-long/bootloader.bin \
-              0x8000 .pio/build/proot-long/partitions.bin \
-              0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \
-              0x10000 .pio/build/proot-long/firmware.bin
+          python -m esptool --chip esp32s3 merge-bin \
+            -o PROOT-Long-HW-Test-merged.bin \
+            --flash-mode qio \
+            --flash-freq 80m \
+            --flash-size 16MB \
+            0x0000 .pio/build/proot-long/bootloader.bin \
+            0x8000 .pio/build/proot-long/partitions.bin \
+            0xe000 ~/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \
+            0x10000 .pio/build/proot-long/firmware.bin
+
+      - name: Upload firmware artifact
         uses: actions/upload-artifact@v4
         with:
           name: PROOT-Long-HW-Test
