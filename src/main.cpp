@@ -120,8 +120,10 @@ void setup(){
   present();
   Serial.println("PROOT UI SKELETON SENT");
   scanRaceBoxes();
-  Serial.printf("RaceBox found: %d\n",raceboxCount);
-  for(int i=0;i<raceboxCount;i++) Serial.printf("%c %d: %s %s\n",i==selectedRacebox?'>':' ',i+1,raceboxes[i].c_str(),raceboxAddr[i].c_str());
+  Serial.printf("RaceBox found: %d\\n",raceboxCount);
+  for(int i=0;i<raceboxCount;i++) Serial.printf("%c %d: %s %s\\n",i==selectedRacebox?'>':' ',i+1,raceboxes[i].c_str(),raceboxAddr[i].c_str());
+  while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+  drawRaceBoxList();
 }
 void loop(){
   if(transfer_num<=1&&lcd_PushColors_len>0)lcd_PushColors(0,0,0,0,NULL);
