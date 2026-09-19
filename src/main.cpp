@@ -106,11 +106,17 @@ static void drawRaceBoxList(){
     int y=46+i*31;
     rect(12,y,616,25,i==selectedRacebox?green:gray);
     num(22,y+3,String(i+1).c_str(),3,black);
-    // Show last 4 hex digits of BLE address as an unambiguous device identifier.
-    String a=raceboxAddr[i]; String hex="";
-    for(int k=0;k<a.length();k++) if(isHexadecimalDigit(a[k])) hex+=a[k];
-    if(hex.length()>4) hex=hex.substring(hex.length()-4);
-    num(92,y+3,hex.c_str(),3,white);
+    // RaceBox advertises a human-visible serial in its BLE name on supported models.
+    // Show all decimal digits from the advertised name; fall back to BLE address suffix.
+    String id="";
+    for(int k=0;k<raceboxes[i].length();k++) if(isDigit(raceboxes[i][k])) id+=raceboxes[i][k];
+    if(!id.length()){
+      String a=raceboxAddr[i];
+      for(int k=0;k<a.length();k++) if(isHexadecimalDigit(a[k])) id+=a[k];
+      if(id.length()>4) id=id.substring(id.length()-4);
+    }
+    if(id.length()>10) id=id.substring(id.length()-10);
+    num(92,y+3,id.c_str(),3,white);
   }
   present();
 }
@@ -163,6 +169,12 @@ void loop(){
     Wire.beginTransmission(TOUCH_ADDR);
     int err=Wire.endTransmission();
     Serial.printf("TOUCH I2C=%d INT=%d\\n",err,digitalRead(TOUCH_INT));
+  }
+  if(down&&!touchDown){
+    Serial.printf("TOUCH DOWN x=%d y=%d\\n",x,y);
+    rect(x-6,y-6,12,12,C(0xFFFF));
+    while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+    present();
   }
   if(down&&!touchDown&&x>=12&&x<628&&y>=46){
     int idx=(y-46)/31;
