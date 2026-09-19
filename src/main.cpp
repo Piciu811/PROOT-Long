@@ -17,6 +17,8 @@ static bool touchDown=false;
 #define TOUCH_ADDR 0x3B
 #define TOUCH_SCL 10
 #define TOUCH_SDA 15
+#define TOUCH_INT 11
+#define TOUCH_RST 16
 static inline uint16_t C(uint16_t v){ return (uint16_t)((v<<8)|(v>>8)); }
 
 static void rect(int x,int y,int w,int h,uint16_t c){
@@ -114,9 +116,15 @@ static void drawRaceBoxList(){
 }
 void setup(){
   Serial.begin(115200); delay(200);
-  pinMode(TFT_BL,OUTPUT); digitalWrite(TFT_BL,HIGH); axs15231_init();
-  // GPIO16 is shared by LCD/touch reset; initialize I2C only after the known-good LCD reset/init.
+  pinMode(TFT_BL,OUTPUT); digitalWrite(TFT_BL,HIGH);
+  // Official LilyGO touch example resets the shared AXS15231B/touch controller first.
+  pinMode(TOUCH_RST,OUTPUT);
+  digitalWrite(TOUCH_RST,HIGH); delay(2);
+  digitalWrite(TOUCH_RST,LOW); delay(10);
+  digitalWrite(TOUCH_RST,HIGH); delay(2);
   Wire.begin(TOUCH_SDA,TOUCH_SCL);
+  pinMode(TOUCH_INT,INPUT);
+  axs15231_init();
   const size_t n=180u*640u;
   nativeFrame=(uint16_t*)heap_caps_malloc(n*2,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
   screen=(uint16_t*)heap_caps_malloc(n*2,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
@@ -149,6 +157,13 @@ void setup(){
 void loop(){
   if(transfer_num<=1&&lcd_PushColors_len>0)lcd_PushColors(0,0,0,0,NULL);
   int x,y; bool down=readTouch(x,y);
+  static uint32_t lastDiag=0;
+  if(millis()-lastDiag>1000){
+    lastDiag=millis();
+    Wire.beginTransmission(TOUCH_ADDR);
+    int err=Wire.endTransmission();
+    Serial.printf("TOUCH I2C=%d INT=%d\\n",err,digitalRead(TOUCH_INT));
+  }
   if(down&&!touchDown&&x>=12&&x<628&&y>=46){
     int idx=(y-46)/31;
     if(idx>=0&&idx<raceboxCount&&idx<4){
