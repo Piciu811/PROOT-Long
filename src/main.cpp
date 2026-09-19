@@ -3,6 +3,7 @@
 #include "esp_heap_caps.h"
 #include <BLEDevice.h>
 #include <BLEScan.h>
+#include <BLEClient.h>
 #include <Wire.h>
 
 extern uint32_t transfer_num;
@@ -14,6 +15,8 @@ static String raceboxAddr[8];
 static int raceboxCount=0, selectedRacebox=0;
 static int bleSeen=0;
 static bool touchDown=false;
+static bool rbConnected=false;
+static String connectedAddr="";
 #define TOUCH_ADDR 0x3B
 #define TOUCH_SCL 10
 #define TOUCH_SDA 15
@@ -79,6 +82,23 @@ static void scanRaceBoxes(){
     raceboxCount++;
   }
   scan->clearResults();
+}
+static bool connectSelectedRaceBox(){
+  if(selectedRacebox<0 || selectedRacebox>=raceboxCount) return false;
+  BLEClient *client=BLEDevice::createClient();
+  BLEAddress addr(raceboxAddr[selectedRacebox].c_str());
+  Serial.printf("Connecting candidate %d %s...\\n",selectedRacebox+1,raceboxAddr[selectedRacebox].c_str());
+  if(!client->connect(addr)){ Serial.println("BLE connect failed"); delete client; return false; }
+  BLEUUID svc("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
+  BLERemoteService *s=client->getService(svc);
+  if(!s){
+    Serial.println("Connected, but RaceBox UART service not found");
+    client->disconnect(); delete client; return false;
+  }
+  rbConnected=true; connectedAddr=raceboxAddr[selectedRacebox];
+  Serial.printf("RACEBOX CONFIRMED: %s\\n",connectedAddr.c_str());
+  // Keep client allocated/connected for the next step (characteristic subscription).
+  return true;
 }
 static bool readTouch(int &lx,int &ly){
   uint8_t cmd[8]={0xb5,0xab,0xa5,0x5a,0,0,0,8},b[14]={0};
@@ -184,7 +204,11 @@ void loop(){
     int idx=(y-46)/31;
     if(idx>=0&&idx<raceboxCount&&idx<4){
       selectedRacebox=idx;
-      Serial.printf("Selected RaceBox %d: %s %s\\n",idx+1,raceboxes[idx].c_str(),raceboxAddr[idx].c_str());
+      Serial.printf("Selected BLE %d: %s %s\\n",idx+1,raceboxes[idx].c_str(),raceboxAddr[idx].c_str());
+      bool ok=connectSelectedRaceBox();
+      // Immediate visible result: green row = confirmed RaceBox, red marker = not RaceBox/connect failed.
+      if(ok) rect(12,46+idx*31,616,25,C(0x07E0));
+      else rect(600,46+idx*31,28,25,C(0xF800));
       // Do not overwrite framebuffer while its previous DMA transfer is still queued.
       while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
       drawRaceBoxList();
