@@ -5,83 +5,61 @@
 extern uint32_t transfer_num;
 extern size_t lcd_PushColors_len;
 
-static uint16_t *nativeFrame = nullptr;
-static uint16_t *landscapeFrame = nullptr;
+static uint16_t *nativeFrame=nullptr,*screen=nullptr;
+static inline uint16_t C(uint16_t v){ return (uint16_t)((v<<8)|(v>>8)); }
 
-static inline uint16_t rgb565(uint16_t c) {
-  return (uint16_t)((c << 8) | (c >> 8));
+static void rect(int x,int y,int w,int h,uint16_t c){
+  if(x<0){w+=x;x=0;} if(y<0){h+=y;y=0;}
+  if(x+w>640)w=640-x; if(y+h>180)h=180-y;
+  if(w<=0||h<=0)return;
+  for(int yy=y;yy<y+h;yy++) for(int xx=x;xx<x+w;xx++) screen[(size_t)yy*640+xx]=c;
 }
-
-// Logical screen is 640x180 landscape.
-// Native panel memory is 180x640 portrait.
-// Rotate logical pixels into the known-good native framebuffer path.
-static void presentLandscape() {
-  for (int y = 0; y < 180; ++y) {
-    for (int x = 0; x < 640; ++x) {
-      // 90 degree rotation: logical (x,y) -> native (nx,ny)
-      const int nx = 179 - y;
-      const int ny = x;
-      nativeFrame[(size_t)ny * 180 + nx] = landscapeFrame[(size_t)y * 640 + x];
-    }
-  }
-  lcd_PushColors(0, 0, 180, 640, nativeFrame);
+static void present(){
+  for(int y=0;y<180;y++) for(int x=0;x<640;x++)
+    nativeFrame[(size_t)x*180+(179-y)]=screen[(size_t)y*640+x];
+  lcd_PushColors(0,0,180,640,nativeFrame);
 }
-
-static void fillRect(int x, int y, int w, int h, uint16_t c) {
-  if (x < 0) { w += x; x = 0; }
-  if (y < 0) { h += y; y = 0; }
-  if (x + w > 640) w = 640 - x;
-  if (y + h > 180) h = 180 - y;
-  if (w <= 0 || h <= 0) return;
-  for (int yy = y; yy < y + h; ++yy)
-    for (int xx = x; xx < x + w; ++xx)
-      landscapeFrame[(size_t)yy * 640 + xx] = c;
+// Tiny 5x7 font, enough for the hardware UI prototype.
+static const uint8_t DIG[12][5]={
+ {0x3E,0x51,0x49,0x45,0x3E},{0,0x42,0x7F,0x40,0},{0x42,0x61,0x51,0x49,0x46},
+ {0x21,0x41,0x45,0x4B,0x31},{0x18,0x14,0x12,0x7F,0x10},{0x27,0x45,0x45,0x45,0x39},
+ {0x3C,0x4A,0x49,0x49,0x30},{0x01,0x71,0x09,0x05,0x03},{0x36,0x49,0x49,0x49,0x36},
+ {0x06,0x49,0x49,0x29,0x1E},{0,0x36,0x36,0,0},{0,0x60,0x60,0,0}};
+static void glyph(int x,int y,int id,int s,uint16_t col){
+  for(int cx=0;cx<5;cx++) for(int cy=0;cy<7;cy++) if(DIG[id][cx]&(1<<cy)) rect(x+cx*s,y+cy*s,s,s,col);
 }
-
-void setup() {
-  Serial.begin(115200);
-  delay(200);
-  Serial.println("PROOT LONG - 640x180 LANDSCAPE TEST");
-
-  pinMode(TFT_BL, OUTPUT);
-  digitalWrite(TFT_BL, HIGH);
-  axs15231_init();
-
-  const size_t pixels = 180u * 640u;
-  nativeFrame = (uint16_t *)heap_caps_malloc(pixels * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  landscapeFrame = (uint16_t *)heap_caps_malloc(pixels * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  if (!nativeFrame) nativeFrame = (uint16_t *)heap_caps_malloc(pixels * 2, MALLOC_CAP_8BIT);
-  if (!landscapeFrame) landscapeFrame = (uint16_t *)heap_caps_malloc(pixels * 2, MALLOC_CAP_8BIT);
-  if (!nativeFrame || !landscapeFrame) {
-    Serial.println("FRAME ALLOC FAILED");
-    return;
-  }
-
-  const uint16_t BLACK = rgb565(0x0000);
-  const uint16_t RED   = rgb565(0xF800);
-  const uint16_t GREEN = rgb565(0x07E0);
-  const uint16_t BLUE  = rgb565(0x001F);
-  const uint16_t WHITE = rgb565(0xFFFF);
-
-  for (size_t i = 0; i < pixels; ++i) landscapeFrame[i] = BLACK;
-
-  // Landscape orientation marker: five vertical bars across the 640px width.
-  fillRect(0,   0, 128, 180, RED);
-  fillRect(128, 0, 128, 180, GREEN);
-  fillRect(256, 0, 128, 180, BLUE);
-  fillRect(384, 0, 128, 180, WHITE);
-  fillRect(512, 0, 128, 180, BLACK);
-
-  // White corner markers make rotation obvious.
-  fillRect(8, 8, 28, 12, WHITE);
-  fillRect(8, 8, 12, 28, WHITE);
-
-  presentLandscape();
-  Serial.println("LANDSCAPE TEST SENT");
+static void num(int x,int y,const char*t,int s,uint16_t col){
+  while(*t){ int id=-1; if(*t>='0'&&*t<='9')id=*t-'0'; else if(*t==':')id=10; else if(*t=='.')id=11;
+    if(id>=0)glyph(x,y,id,s,col); x+=6*s; t++; }
 }
+void setup(){
+  Serial.begin(115200); delay(200);
+  pinMode(TFT_BL,OUTPUT); digitalWrite(TFT_BL,HIGH); axs15231_init();
+  const size_t n=180u*640u;
+  nativeFrame=(uint16_t*)heap_caps_malloc(n*2,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+  screen=(uint16_t*)heap_caps_malloc(n*2,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+  if(!nativeFrame||!screen){Serial.println("FRAME ALLOC FAILED");return;}
+  uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800);
+  for(size_t i=0;i<n;i++)screen[i]=black;
 
-void loop() {
-  if (transfer_num <= 1 && lcd_PushColors_len > 0)
-    lcd_PushColors(0, 0, 0, 0, NULL);
+  // PRÖÖT 640x180 dashboard skeleton.
+  rect(0,0,640,3,green);
+  rect(0,142,640,2,gray);
+  rect(420,3,2,139,gray);
+  rect(10,12,395,116,C(0x0841));
+  num(34,28,"123.4",10,white);          // speed placeholder
+  num(438,18,"0:00.000",4,green);       // delta/current placeholder
+  num(438,66,"1:23.456",3,white);       // last
+  num(438,102,"1:22.987",3,green);      // best
+  rect(12,151,90,18,green);             // RaceBox status
+  rect(112,151,90,18,gray);             // GPS status
+  rect(212,151,90,18,red);              // REC/status
+  num(535,149,"12",3,white);             // lap/sats placeholder
+
+  present();
+  Serial.println("PROOT UI SKELETON SENT");
+}
+void loop(){
+  if(transfer_num<=1&&lcd_PushColors_len>0)lcd_PushColors(0,0,0,0,NULL);
   delay(1);
 }
