@@ -90,23 +90,42 @@ static void saveRaceBox(const String &addr){
   prefs.begin("proot",false); prefs.putString("rbAddr",addr); prefs.end();
   savedRbAddr=addr;
 }
-static bool connectSelectedRaceBox(){
-  if(selectedRacebox<0 || selectedRacebox>=raceboxCount) return false;
+static BLEClient *rbClient=nullptr;
+static bool probeRaceBoxAddress(const String &addr){
   BLEClient *client=BLEDevice::createClient();
-  BLEAddress addr(raceboxAddr[selectedRacebox].c_str());
-  Serial.printf("Connecting candidate %d %s...\\n",selectedRacebox+1,raceboxAddr[selectedRacebox].c_str());
-  if(!client->connect(addr)){ Serial.println("BLE connect failed"); delete client; return false; }
+  Serial.printf("PROBE %s...\\n",addr.c_str());
+  if(!client->connect(BLEAddress(addr.c_str()))){
+    Serial.println("PROBE connect failed"); delete client; return false;
+  }
   BLEUUID svc("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
   BLERemoteService *s=client->getService(svc);
   if(!s){
-    Serial.println("Connected, but RaceBox UART service not found");
+    Serial.println("PROBE not RaceBox");
     client->disconnect(); delete client; return false;
   }
-  rbConnected=true; connectedAddr=raceboxAddr[selectedRacebox];
-  saveRaceBox(connectedAddr);
-  Serial.printf("RACEBOX CONFIRMED: %s\\n",connectedAddr.c_str());
-  // Keep client allocated/connected for the next step (characteristic subscription).
+  rbClient=client;
+  rbConnected=true; connectedAddr=addr; saveRaceBox(addr);
+  Serial.printf("RACEBOX CONFIRMED %s\\n",addr.c_str());
   return true;
+}
+static bool connectSelectedRaceBox(){
+  if(selectedRacebox<0 || selectedRacebox>=raceboxCount) return false;
+  return probeRaceBoxAddress(raceboxAddr[selectedRacebox]);
+}
+static int autoFindRaceBox(){
+  // First try the address remembered by the original-style rbAddr preference.
+  if(savedRbAddr.length()){
+    for(int i=0;i<raceboxCount;i++){
+      if(raceboxAddr[i].equalsIgnoreCase(savedRbAddr) && probeRaceBoxAddress(raceboxAddr[i])) return i;
+    }
+  }
+  // RaceBox does not have to advertise its UART UUID. Connect to nearby BLE candidates
+  // one by one and identify it by the service that exists after connection.
+  for(int i=0;i<raceboxCount;i++){
+    if(savedRbAddr.length() && raceboxAddr[i].equalsIgnoreCase(savedRbAddr)) continue;
+    if(probeRaceBoxAddress(raceboxAddr[i])) return i;
+  }
+  return -1;
 }
 static bool readTouch(int &lx,int &ly){
   uint8_t cmd[8]={0xb5,0xab,0xa5,0x5a,0,0,0,8},b[14]={0};
@@ -136,7 +155,7 @@ static void drawRaceBoxList(){
   // One visible row per discovered RaceBox (up to 4 on 180px screen).
   for(int i=0;i<raceboxCount && i<4;i++){
     int y=46+i*31;
-    rect(12,y,616,25,i==selectedRacebox?green:gray);
+    rect(12,y,616,25,(rbConnected&&i==selectedRacebox)?green:gray);
     num(22,y+3,String(i+1).c_str(),3,black);
     // RaceBox advertises a human-visible serial in its BLE name on supported models.
     // Show all decimal digits from the advertised name; fall back to BLE address suffix.
@@ -195,6 +214,13 @@ void setup(){
       Serial.printf("Saved RaceBox found at row %d: %s\\n",i+1,savedRbAddr.c_str());
       break;
     }
+  }
+  int confirmed=autoFindRaceBox();
+  if(confirmed>=0){
+    selectedRacebox=confirmed;
+    Serial.printf("AUTO RaceBox row %d\\n",confirmed+1);
+  } else {
+    Serial.println("AUTO no RaceBox service found");
   }
   Serial.printf("RaceBox found: %d\\n",raceboxCount);
   for(int i=0;i<raceboxCount;i++) Serial.printf("%c %d: %s %s\\n",i==selectedRacebox?'>':' ',i+1,raceboxes[i].c_str(),raceboxAddr[i].c_str());
