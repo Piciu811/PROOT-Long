@@ -27,7 +27,12 @@ TouchPoint readTouch(){
   TouchPoint p; uint8_t b[8]={0};
   if(!touchIRQ || millis()<nextTouchRead) return p;
   touchIRQ=false; nextTouchRead=millis()+20;
-  IIC_Bus->IIC_ReadCData_Data(0x3B, TOUCH_READ_CMD, sizeof(TOUCH_READ_CMD), b, sizeof(b));
+  Wire.beginTransmission(0x3B);
+  Wire.write(TOUCH_READ_CMD, sizeof(TOUCH_READ_CMD));
+  if(Wire.endTransmission(false)!=0) return p;
+  size_t got=Wire.requestFrom((uint8_t)0x3B,(uint8_t)sizeof(b));
+  if(got!=sizeof(b)) { while(Wire.available()) Wire.read(); return p; }
+  for(size_t i=0;i<sizeof(b);i++) b[i]=Wire.read();
   uint8_t fingers=b[1], event=b[2]>>4;
   if(fingers==1 && event==0x08){
     uint16_t nativeX=((uint16_t)(b[4]&0x0F)<<8)|b[5];
@@ -118,7 +123,7 @@ void setup(){
   pinMode(TFT_BL,OUTPUT); digitalWrite(TFT_BL,LOW);
   pinMode(TOUCH_RES,OUTPUT); pinMode(TOUCH_INT,INPUT_PULLUP);
   digitalWrite(TOUCH_RES,HIGH); delay(2); digitalWrite(TOUCH_RES,LOW); delay(100); digitalWrite(TOUCH_RES,HIGH); delay(2);
-  IIC_Bus->begin();
+  Wire.begin(TOUCH_IICSDA, TOUCH_IICSCL, 400000);
   writeC8D8(0x6A,0x00,0b00111111); writeC8D8(0x6A,0x09,0b01100100);
   attachInterrupt(TOUCH_INT,touchISR,FALLING);
   if(!gfx->begin()){ Serial.println("DISPLAY INIT FAILED"); while(true) delay(1000); }
