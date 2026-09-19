@@ -88,9 +88,13 @@ static bool readTouch(int &lx,int &ly){
   Wire.readBytes(b,14);
   if(!b[1] || b[0]) return false;
   int nx=((b[2]&0x0F)<<8)|b[3], ny=((b[4]&0x0F)<<8)|b[5];
-  // Native touch coordinates follow the portrait panel; map to our 640x180 landscape UI.
-  lx=ny; ly=179-nx;
-  return lx>=0&&lx<640&&ly>=0&&ly<180;
+  // Touch controller axes are opposite to the framebuffer's native axes on this module:
+  // raw X spans the long 640px axis, raw Y spans the short 180px axis.
+  // Map to our landscape UI and mirror X to match the physical display orientation.
+  lx=639-nx;
+  ly=179-ny;
+  lx=constrain(lx,0,639); ly=constrain(ly,0,179);
+  return true;
 }
 static void drawRaceBoxList(){
   uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800);
@@ -172,7 +176,7 @@ void loop(){
   }
   if(down&&!touchDown){
     Serial.printf("TOUCH DOWN x=%d y=%d\\n",x,y);
-    rect(x-6,y-6,12,12,C(0xFFFF));
+    rect(x-12,y-12,24,24,C(0xFFFF));
     while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
     present();
   }
