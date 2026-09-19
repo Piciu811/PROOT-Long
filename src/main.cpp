@@ -3,6 +3,7 @@
 #include "esp_heap_caps.h"
 #include <BLEDevice.h>
 #include <BLEScan.h>
+#include <Wire.h>
 
 extern uint32_t transfer_num;
 extern size_t lcd_PushColors_len;
@@ -11,6 +12,10 @@ static uint16_t *nativeFrame=nullptr,*screen=nullptr;
 static String raceboxes[8];
 static String raceboxAddr[8];
 static int raceboxCount=0, selectedRacebox=0;
+static bool touchDown=false;
+#define TOUCH_ADDR 0x3B
+#define TOUCH_SCL 10
+#define TOUCH_SDA 15
 static inline uint16_t C(uint16_t v){ return (uint16_t)((v<<8)|(v>>8)); }
 
 static void rect(int x,int y,int w,int h,uint16_t c){
@@ -54,6 +59,18 @@ static void scanRaceBoxes(){
   }
   scan->clearResults();
 }
+static bool readTouch(int &lx,int &ly){
+  uint8_t cmd[8]={0xb5,0xab,0xa5,0x5a,0,0,0,8},b[14]={0};
+  Wire.beginTransmission(TOUCH_ADDR); Wire.write(cmd,8);
+  if(Wire.endTransmission()!=0) return false;
+  if(Wire.requestFrom(TOUCH_ADDR,14)!=(size_t)14) return false;
+  Wire.readBytes(b,14);
+  if(!b[1] || b[0]) return false;
+  int nx=((b[2]&0x0F)<<8)|b[3], ny=((b[4]&0x0F)<<8)|b[5];
+  // Native touch coordinates follow the portrait panel; map to our 640x180 landscape UI.
+  lx=ny; ly=179-nx;
+  return lx>=0&&lx<640&&ly>=0&&ly<180;
+}
 static void drawRaceBoxList(){
   uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800);
   for(size_t i=0;i<180u*640u;i++)screen[i]=black;
@@ -77,6 +94,8 @@ static void drawRaceBoxList(){
 void setup(){
   Serial.begin(115200); delay(200);
   pinMode(TFT_BL,OUTPUT); digitalWrite(TFT_BL,HIGH); axs15231_init();
+  // GPIO16 is shared by LCD/touch reset; initialize I2C only after the known-good LCD reset/init.
+  Wire.begin(TOUCH_SDA,TOUCH_SCL);
   const size_t n=180u*640u;
   nativeFrame=(uint16_t*)heap_caps_malloc(n*2,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
   screen=(uint16_t*)heap_caps_malloc(n*2,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
@@ -106,5 +125,17 @@ void setup(){
 }
 void loop(){
   if(transfer_num<=1&&lcd_PushColors_len>0)lcd_PushColors(0,0,0,0,NULL);
-  delay(1);
+  int x,y; bool down=readTouch(x,y);
+  if(down&&!touchDown&&x>=12&&x<628&&y>=46){
+    int idx=(y-46)/31;
+    if(idx>=0&&idx<raceboxCount&&idx<4){
+      selectedRacebox=idx;
+      Serial.printf("Selected RaceBox %d: %s %s\\n",idx+1,raceboxes[idx].c_str(),raceboxAddr[idx].c_str());
+      // Do not overwrite framebuffer while its previous DMA transfer is still queued.
+      while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+      drawRaceBoxList();
+    }
+  }
+  touchDown=down;
+  delay(20);
 }
