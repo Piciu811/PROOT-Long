@@ -28,7 +28,7 @@ jobs:
         run: |
           python -m esptool --chip esp32s3 merge-bin \
             -o PROOT-Long-HW-Test-merged.bin \
-            --flash-mode qio \
+            --flash-mode dio \
             --flash-freq 80m \
             --flash-size 16MB \
             0x0000 .pio/build/proot-long/bootloader.bin \
