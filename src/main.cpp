@@ -7,10 +7,11 @@
 #include <BLEClient.h>
 #include "board_config.h"
 
-Arduino_DataBus *bus = new Arduino_ESP32QSPI(TFT_QSPI_CS, TFT_QSPI_SCK, TFT_QSPI_D0, TFT_QSPI_D1, TFT_QSPI_D2, TFT_QSPI_D3);
-Arduino_GFX *gfx = new Arduino_AXS15231(bus, TFT_QSPI_RST, 1, false, LCD_NATIVE_W, LCD_NATIVE_H);
+static constexpr uint16_t BLACK=0x0000, WHITE=0xFFFF, GREEN=0x07E0, YELLOW=0xFFE0, DARKGREY=0x7BEF;
 
-std::shared_ptr<Arduino_IIC_DriveBus> IIC_Bus = std::make_shared<Arduino_HWIIC>(TOUCH_IICSDA, TOUCH_IICSCL, &Wire);
+Arduino_DataBus *bus = new Arduino_ESP32QSPI(TFT_QSPI_CS, TFT_QSPI_SCK, TFT_QSPI_D0, TFT_QSPI_D1, TFT_QSPI_D2, TFT_QSPI_D3);
+Arduino_GFX *gfx = new Arduino_AXS15231B(bus, TFT_QSPI_RST, 1, false, LCD_NATIVE_W, LCD_NATIVE_H);
+
 static const uint8_t TOUCH_READ_CMD[] = {0xB5,0xAB,0xA5,0x5A,0x00,0x00,0x00,0x08,0x00,0x00,0x00};
 volatile bool touchIRQ=false;
 uint32_t nextTouchRead=0;
@@ -74,9 +75,9 @@ void scanRaceBox(){
   if(rbConnected) return;
   BLEScan *scan=BLEDevice::getScan();
   scan->setActiveScan(true); scan->setInterval(100); scan->setWindow(99);
-  BLEScanResults results=scan->start(4,false);
-  for(int i=0;i<results.getCount();i++){
-    BLEAdvertisedDevice dev=results.getDevice(i);
+  BLEScanResults *results=scan->start(4,false);
+  for(int i=0;i<results->getCount();i++){
+    BLEAdvertisedDevice dev=results->getDevice(i);
     if(dev.haveServiceUUID() && dev.isAdvertisingService(RB_SERVICE)){
       if(connectRaceBox(dev)) break;
     }
