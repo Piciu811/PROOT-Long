@@ -54,6 +54,26 @@ static void scanRaceBoxes(){
   }
   scan->clearResults();
 }
+static void drawRaceBoxList(){
+  uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800);
+  for(size_t i=0;i<180u*640u;i++)screen[i]=black;
+  rect(0,0,640,4,green);
+  // Header/status blocks: green=scan complete, red=no devices.
+  rect(12,12,180,22,raceboxCount?green:red);
+  num(210,10,String(raceboxCount).c_str(),4,white);
+  // One visible row per discovered RaceBox (up to 4 on 180px screen).
+  for(int i=0;i<raceboxCount && i<4;i++){
+    int y=46+i*31;
+    rect(12,y,616,25,i==selectedRacebox?green:gray);
+    num(22,y+3,String(i+1).c_str(),3,black);
+    // Show last 4 hex digits of BLE address as an unambiguous device identifier.
+    String a=raceboxAddr[i]; String hex="";
+    for(int k=0;k<a.length();k++) if(isHexadecimalDigit(a[k])) hex+=a[k];
+    if(hex.length()>4) hex=hex.substring(hex.length()-4);
+    num(92,y+3,hex.c_str(),3,white);
+  }
+  present();
+}
 void setup(){
   Serial.begin(115200); delay(200);
   pinMode(TFT_BL,OUTPUT); digitalWrite(TFT_BL,HIGH); axs15231_init();
