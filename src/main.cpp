@@ -12,6 +12,7 @@ static uint16_t *nativeFrame=nullptr,*screen=nullptr;
 static String raceboxes[8];
 static String raceboxAddr[8];
 static int raceboxCount=0, selectedRacebox=0;
+static int bleSeen=0;
 static bool touchDown=false;
 #define TOUCH_ADDR 0x3B
 #define TOUCH_SCL 10
@@ -46,12 +47,20 @@ static void scanRaceBoxes(){
   BLEDevice::init("");
   BLEScan *scan=BLEDevice::getScan();
   scan->setActiveScan(true);
-  BLEScanResults found=scan->start(5,false);
+  scan->setInterval(100);
+  scan->setWindow(99);
+  BLEScanResults found=scan->start(10,false);
   raceboxCount=0;
+  bleSeen=found.getCount();
+  BLEUUID rbService("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
   for(int i=0;i<found.getCount() && raceboxCount<8;i++){
     BLEAdvertisedDevice d=found.getDevice(i);
     String name=d.haveName()?String(d.getName().c_str()):String("");
-    if(name.indexOf("RaceBox")>=0 || name.indexOf("RACEBOX")>=0){
+    bool nameMatch=name.indexOf("RaceBox")>=0 || name.indexOf("RACEBOX")>=0 || name.indexOf("racebox")>=0;
+    bool serviceMatch=d.haveServiceUUID() && d.isAdvertisingService(rbService);
+    Serial.printf("BLE %d name='%s' addr=%s svc=%d RBname=%d RBsvc=%d RSSI=%d\\n",
+      i,name.c_str(),d.getAddress().toString().c_str(),d.haveServiceUUID(),nameMatch,serviceMatch,d.getRSSI());
+    if(nameMatch || serviceMatch){
       raceboxes[raceboxCount]=name.length()?name:String("RaceBox");
       raceboxAddr[raceboxCount]=String(d.getAddress().toString().c_str());
       raceboxCount++;
@@ -78,6 +87,8 @@ static void drawRaceBoxList(){
   // Header/status blocks: green=scan complete, red=no devices.
   rect(12,12,180,22,raceboxCount?green:red);
   num(210,10,String(raceboxCount).c_str(),4,white);
+  // Total BLE advertisements seen, for hardware diagnostics even when no RaceBox matches.
+  num(330,10,String(bleSeen).c_str(),4,white);
   // One visible row per discovered RaceBox (up to 4 on 180px screen).
   for(int i=0;i<raceboxCount && i<4;i++){
     int y=46+i*31;
