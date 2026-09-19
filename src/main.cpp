@@ -215,13 +215,8 @@ void setup(){
       break;
     }
   }
-  int confirmed=autoFindRaceBox();
-  if(confirmed>=0){
-    selectedRacebox=confirmed;
-    Serial.printf("AUTO RaceBox row %d\\n",confirmed+1);
-  } else {
-    Serial.println("AUTO no RaceBox service found");
-  }
+  // Do not connect/probe here: BLEClient::connect() can block setup for seconds per candidate.
+  // Show the list immediately; connection is attempted only after the user selects a row.
   Serial.printf("RaceBox found: %d\\n",raceboxCount);
   for(int i=0;i<raceboxCount;i++) Serial.printf("%c %d: %s %s\\n",i==selectedRacebox?'>':' ',i+1,raceboxes[i].c_str(),raceboxAddr[i].c_str());
   while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
