@@ -6,7 +6,7 @@ Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   TFT_QSPI_CS, TFT_QSPI_SCK,
   TFT_QSPI_D0, TFT_QSPI_D1, TFT_QSPI_D2, TFT_QSPI_D3);
 
-Arduino_GFX *gfx = new Arduino_AXS15231(
+Arduino_GFX *gfx = new Arduino_AXS15231B(
   bus, TFT_QSPI_RST, 0, false, LCD_NATIVE_W, LCD_NATIVE_H);
 
 void setup() {
