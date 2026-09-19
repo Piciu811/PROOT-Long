@@ -53,18 +53,28 @@ static void scanRaceBoxes(){
   raceboxCount=0;
   bleSeen=found.getCount();
   BLEUUID rbService("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
-  for(int i=0;i<found.getCount() && raceboxCount<8;i++){
-    BLEAdvertisedDevice d=found.getDevice(i);
-    String name=d.haveName()?String(d.getName().c_str()):String("");
-    bool nameMatch=name.indexOf("RaceBox")>=0 || name.indexOf("RACEBOX")>=0 || name.indexOf("racebox")>=0;
-    bool serviceMatch=d.haveServiceUUID() && d.isAdvertisingService(rbService);
-    Serial.printf("BLE %d name='%s' addr=%s svc=%d RBname=%d RBsvc=%d RSSI=%d\\n",
-      i,name.c_str(),d.getAddress().toString().c_str(),d.haveServiceUUID(),nameMatch,serviceMatch,d.getRSSI());
-    if(nameMatch || serviceMatch){
-      raceboxes[raceboxCount]=name.length()?name:String("RaceBox");
-      raceboxAddr[raceboxCount]=String(d.getAddress().toString().c_str());
-      raceboxCount++;
+
+  // Do not discard devices just because RaceBox does not advertise its UART service/name.
+  // Show the strongest BLE devices and let the user select the nearby unit.
+  int used[8]; for(int i=0;i<8;i++) used[i]=-1;
+  for(int slot=0;slot<8;slot++){
+    int best=-1,bestRssi=-999;
+    for(int i=0;i<found.getCount();i++){
+      bool already=false; for(int k=0;k<slot;k++) if(used[k]==i) already=true;
+      if(already) continue;
+      BLEAdvertisedDevice d=found.getDevice(i);
+      if(d.getRSSI()>bestRssi){best=i;bestRssi=d.getRSSI();}
     }
+    if(best<0) break;
+    used[slot]=best;
+    BLEAdvertisedDevice d=found.getDevice(best);
+    String name=d.haveName()?String(d.getName().c_str()):String("BLE");
+    bool serviceMatch=d.haveServiceUUID() && d.isAdvertisingService(rbService);
+    raceboxes[raceboxCount]=name;
+    raceboxAddr[raceboxCount]=String(d.getAddress().toString().c_str());
+    Serial.printf("BLE candidate %d name='%s' addr=%s RSSI=%d RBsvc=%d\\n",
+      raceboxCount+1,name.c_str(),raceboxAddr[raceboxCount].c_str(),d.getRSSI(),serviceMatch);
+    raceboxCount++;
   }
   scan->clearResults();
 }
@@ -85,7 +95,7 @@ static void drawRaceBoxList(){
   for(size_t i=0;i<180u*640u;i++)screen[i]=black;
   rect(0,0,640,4,green);
   // Header/status blocks: green=scan complete, red=no devices.
-  rect(12,12,180,22,raceboxCount?green:red);
+  rect(12,12,180,22,bleSeen?green:red);
   num(210,10,String(raceboxCount).c_str(),4,white);
   // Total BLE advertisements seen, for hardware diagnostics even when no RaceBox matches.
   num(330,10,String(bleSeen).c_str(),4,white);
