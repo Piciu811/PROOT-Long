@@ -1,39 +1,33 @@
 #include <Arduino.h>
-#include <Arduino_GFX_Library.h>
-#include "board_config.h"
+#include "AXS15231B.h"
 
-Arduino_DataBus *bus = new Arduino_ESP32QSPI(
-  TFT_QSPI_CS, TFT_QSPI_SCK,
-  TFT_QSPI_D0, TFT_QSPI_D1, TFT_QSPI_D2, TFT_QSPI_D3);
+extern uint32_t transfer_num;
+extern size_t lcd_PushColors_len;
 
-Arduino_GFX *gfx = new Arduino_AXS15231B(
-  bus, TFT_QSPI_RST, 0, false, LCD_NATIVE_W, LCD_NATIVE_H);
+static uint16_t linebuf[180 * 16];
+
+static void fill_screen(uint16_t color) {
+  for (size_t i = 0; i < sizeof(linebuf)/sizeof(linebuf[0]); ++i) linebuf[i] = color;
+  for (int y = 0; y < 640; y += 16) {
+    lcd_PushColors(0, y, 180, 16, linebuf);
+    while (transfer_num > 0 || lcd_PushColors_len > 0) {
+      lcd_PushColors(0, 0, 0, 0, NULL);
+      delay(1);
+    }
+  }
+}
 
 void setup() {
   Serial.begin(115200);
-  delay(250);
-  Serial.println("PROOT LONG DISPLAY TEST");
+  delay(200);
+  Serial.println("PROOT LONG - LILYGO FACTORY DRIVER TEST");
 
   pinMode(TFT_BL, OUTPUT);
-  digitalWrite(TFT_BL, LOW);
-
-  Serial.println("gfx begin...");
-  gfx->begin();
-  Serial.println("gfx begin OK");
-
-  gfx->fillScreen(0xFFFF);
-  delay(300);
-  gfx->fillScreen(0x0000);
-
-  gfx->setTextColor(0xFFFF);
-  gfx->setTextSize(2);
-  gfx->setCursor(18, 280);
-  gfx->println("PROOT LONG");
-  gfx->setCursor(18, 310);
-  gfx->println("DISPLAY OK");
-
   digitalWrite(TFT_BL, HIGH);
-  Serial.println("backlight ON");
+
+  axs15231_init();
+  fill_screen(0x001F);
+  Serial.println("DISPLAY TEST OK");
 }
 
 void loop() {
