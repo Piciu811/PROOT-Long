@@ -141,11 +141,7 @@ static void IRAM_ATTR spi_dma_cd(spi_transaction_t *trans)
     {
         if(lcd_spi_dma_write) {
             lcd_spi_dma_write = false;
-            lv_disp_t * disp = _lv_refr_get_disp_refreshing();
-            if(disp != NULL)
-                lv_disp_flush_ready(disp->driver);
-
-            TFT_CS_H;
+TFT_CS_H;
         }
     }
 }
