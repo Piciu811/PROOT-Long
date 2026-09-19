@@ -1,35 +1,37 @@
 #include <Arduino.h>
 #include "AXS15231B.h"
+#include "esp_heap_caps.h"
 
 extern uint32_t transfer_num;
 extern size_t lcd_PushColors_len;
 
-static uint16_t linebuf[180 * 16];
-
-static void fill_screen(uint16_t color) {
-  for (size_t i = 0; i < sizeof(linebuf)/sizeof(linebuf[0]); ++i) linebuf[i] = color;
-  for (int y = 0; y < 640; y += 16) {
-    lcd_PushColors(0, y, 180, 16, linebuf);
-    while (transfer_num > 0 || lcd_PushColors_len > 0) {
-      lcd_PushColors(0, 0, 0, 0, NULL);
-      delay(1);
-    }
-  }
-}
+static uint16_t *frame = nullptr;
 
 void setup() {
   Serial.begin(115200);
   delay(200);
-  Serial.println("PROOT LONG - LILYGO FACTORY DRIVER TEST");
+  Serial.println("PROOT LONG - FULL FRAME FACTORY PATH");
 
   pinMode(TFT_BL, OUTPUT);
   digitalWrite(TFT_BL, HIGH);
 
   axs15231_init();
-  fill_screen(0x001F);
-  Serial.println("DISPLAY TEST OK");
+
+  const size_t pixels = 180u * 640u;
+  frame = (uint16_t *)heap_caps_malloc(pixels * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!frame) frame = (uint16_t *)heap_caps_malloc(pixels * sizeof(uint16_t), MALLOC_CAP_8BIT);
+  if (!frame) {
+    Serial.println("FRAME ALLOC FAILED");
+    return;
+  }
+
+  for (size_t i = 0; i < pixels; ++i) frame[i] = 0x07E0; // green
+  lcd_PushColors(0, 0, 180, 640, frame);
 }
 
 void loop() {
-  delay(1000);
+  if (transfer_num <= 1 && lcd_PushColors_len > 0) {
+    lcd_PushColors(0, 0, 0, 0, NULL);
+  }
+  delay(1);
 }
