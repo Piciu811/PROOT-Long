@@ -353,7 +353,7 @@ static void updateLapClock(){
 }
 
 static void drawRaceBoxLive(){
-  uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800);
+  uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800),blue=C(0x001F);
   float speed; uint8_t fix,sats; uint32_t packets,tow; bool valid;
   portENTER_CRITICAL(&rbDataMux);
   speed=rbSpeedKmh; fix=rbFix; sats=rbSats; packets=rbLivePackets; valid=rbLiveValid; tow=rbTowMs;
