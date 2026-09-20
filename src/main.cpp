@@ -1,9 +1,7 @@
 #include <Arduino.h>
 #include "AXS15231B.h"
 #include "esp_heap_caps.h"
-#include <BLEDevice.h>
-#include <BLEScan.h>
-#include <BLEClient.h>
+#include <NimBLEDevice.h>
 #include <Preferences.h>
 #include <Wire.h>
 
@@ -13,6 +11,7 @@ extern size_t lcd_PushColors_len;
 static uint16_t *nativeFrame=nullptr,*screen=nullptr;
 static String raceboxes[8];
 static String raceboxAddr[8];
+static uint8_t raceboxAddrType[8]={0};
 static int raceboxCount=0, selectedRacebox=0;
 static int listPage=0;
 static int bleSeen=0;
@@ -53,74 +52,98 @@ static void num(int x,int y,const char*t,int s,uint16_t col){
     if(id>=0)glyph(x,y,id,s,col); x+=6*s; t++; }
 }
 static void scanRaceBoxes(){
-  BLEDevice::init("");
-  BLEScan *scan=BLEDevice::getScan();
+  NimBLEDevice::init("");
+  NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+  NimBLEScan *scan=NimBLEDevice::getScan();
   scan->setActiveScan(true);
   scan->setInterval(100);
   scan->setWindow(99);
-  BLEScanResults found=scan->start(10,false);
+  NimBLEScanResults found=scan->getResults(10000,false);
   raceboxCount=0;
   bleSeen=found.getCount();
-  BLEUUID rbService("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
+  NimBLEUUID rbService("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
 
-  // Do not discard devices just because RaceBox does not advertise its UART service/name.
-  // Show the strongest BLE devices and let the user select the nearby unit.
   int used[8]; for(int i=0;i<8;i++) used[i]=-1;
   for(int slot=0;slot<8;slot++){
     int best=-1,bestRssi=-999;
     for(int i=0;i<found.getCount();i++){
       bool already=false; for(int k=0;k<slot;k++) if(used[k]==i) already=true;
       if(already) continue;
-      BLEAdvertisedDevice d=found.getDevice(i);
-      if(d.getRSSI()>bestRssi){best=i;bestRssi=d.getRSSI();}
+      const NimBLEAdvertisedDevice *d=found.getDevice(i);
+      if(d && d->getRSSI()>bestRssi){best=i;bestRssi=d->getRSSI();}
     }
     if(best<0) break;
     used[slot]=best;
-    BLEAdvertisedDevice d=found.getDevice(best);
-    String name=d.haveName()?String(d.getName().c_str()):String("BLE");
-    bool serviceMatch=d.haveServiceUUID() && d.isAdvertisingService(rbService);
+    const NimBLEAdvertisedDevice *d=found.getDevice(best);
+    String name=d->haveName()?String(d->getName().c_str()):String("BLE");
+    bool serviceMatch=d->isAdvertisingService(rbService);
     raceboxes[raceboxCount]=name;
-    raceboxAddr[raceboxCount]=String(d.getAddress().toString().c_str());
-    Serial.printf("BLE candidate %d name='%s' addr=%s RSSI=%d RBsvc=%d\\n",
-      raceboxCount+1,name.c_str(),raceboxAddr[raceboxCount].c_str(),d.getRSSI(),serviceMatch);
+    raceboxAddr[raceboxCount]=String(d->getAddress().toString().c_str());
+    raceboxAddrType[raceboxCount]=d->getAddress().getType();
+    Serial.printf("BLE candidate %d name='%s' addr=%s type=%u RSSI=%d RBsvc=%d\\n",
+      raceboxCount+1,name.c_str(),raceboxAddr[raceboxCount].c_str(),
+      raceboxAddrType[raceboxCount],d->getRSSI(),serviceMatch);
     raceboxCount++;
   }
-  // Keep scan results alive until connection attempt; clear only on the next scan.
 }
 static void saveRaceBox(const String &addr){
   prefs.begin("proot",false); prefs.putString("rbAddr",addr); prefs.end();
   savedRbAddr=addr;
 }
-static BLEClient *rbClient=nullptr;
+static NimBLEClient *rbClient=nullptr;
+static NimBLERemoteCharacteristic *rbTx=nullptr,*rbRx=nullptr;
 enum ConnectState : uint8_t { CONN_IDLE, CONN_WORKING, CONN_OK, CONN_FAIL };
 static volatile ConnectState connState=CONN_IDLE;
 static volatile int connIndex=-1;
 static ConnectState drawnConnState=CONN_IDLE;
-static bool probeRaceBoxAddress(const String &addr){
-  BLEClient *client=BLEDevice::createClient();
-  Serial.printf("PROBE %s...\\n",addr.c_str());
-  // Connect first; RaceBox exposes Nordic UART after GATT discovery.
-  if(!client->connect(BLEAddress(addr.c_str()))){
-    Serial.println("PROBE FAIL: connect"); delete client; return false;
+
+static void rbNotify(NimBLERemoteCharacteristic*, uint8_t *data, size_t len, bool){
+  Serial.printf("RB RX %u:", (unsigned)len);
+  for(size_t i=0;i<len && i<32;i++) Serial.printf(" %02X",data[i]);
+  Serial.println();
+}
+
+static bool probeRaceBoxIndex(int idx){
+  if(idx<0 || idx>=raceboxCount) return false;
+  const String addr=raceboxAddr[idx];
+  NimBLEAddress target(std::string(addr.c_str()),raceboxAddrType[idx]);
+  Serial.printf("NIMBLE PROBE %s type=%u...\\n",addr.c_str(),raceboxAddrType[idx]);
+
+  NimBLEClient *stale=NimBLEDevice::getClientByPeerAddress(target);
+  if(stale) NimBLEDevice::deleteClient(stale);
+  NimBLEClient *client=NimBLEDevice::createClient();
+  if(!client){ Serial.println("PROBE FAIL: createClient"); return false; }
+
+  if(!client->connect(target)){
+    Serial.println("PROBE FAIL: connect");
+    NimBLEDevice::deleteClient(client);
+    return false;
   }
-  BLEUUID svc("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
-  BLEUUID rxid("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
-  BLEUUID txid("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");
-  BLERemoteService *s=client->getService(svc);
-  if(!s){
+
+  NimBLERemoteService *svc=client->getService("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
+  if(!svc){
     Serial.println("PROBE FAIL: no RaceBox UART service");
-    client->disconnect(); delete client; return false;
+    client->disconnect(); NimBLEDevice::deleteClient(client); return false;
   }
-  BLERemoteCharacteristic *rx=s->getCharacteristic(rxid);
-  BLERemoteCharacteristic *tx=s->getCharacteristic(txid);
-  if(!rx || !tx){
-    Serial.println("PROBE FAIL: RaceBox UART characteristics missing");
-    client->disconnect(); delete client; return false;
+  rbRx=svc->getCharacteristic("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
+  rbTx=svc->getCharacteristic("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");
+  if(!rbRx || !rbTx || !rbTx->canNotify()){
+    Serial.println("PROBE FAIL: RaceBox UART characteristics");
+    client->disconnect(); NimBLEDevice::deleteClient(client); rbRx=nullptr; rbTx=nullptr; return false;
   }
+  if(!rbTx->subscribe(true,rbNotify)){
+    Serial.println("PROBE FAIL: TX subscribe");
+    client->disconnect(); NimBLEDevice::deleteClient(client); rbRx=nullptr; rbTx=nullptr; return false;
+  }
+
   rbClient=client;
   rbConnected=true; connectedAddr=addr; saveRaceBox(addr);
-  Serial.printf("RACEBOX CONFIRMED %s RX=%d TXnotify=%d\\n",addr.c_str(),rx!=nullptr,tx->canNotify());
+  Serial.printf("RACEBOX CONNECTED %s\\n",addr.c_str());
   return true;
+}
+static bool probeRaceBoxAddress(const String &addr){
+  for(int i=0;i<raceboxCount;i++) if(raceboxAddr[i].equalsIgnoreCase(addr)) return probeRaceBoxIndex(i);
+  return false;
 }
 static bool connectSelectedRaceBox(){
   if(selectedRacebox<0 || selectedRacebox>=raceboxCount) return false;
