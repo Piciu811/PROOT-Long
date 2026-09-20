@@ -91,6 +91,13 @@ static void saveRaceBox(const String &addr){
   savedRbAddr=addr;
 }
 static NimBLEClient *rbClient=nullptr;
+static portMUX_TYPE rbDataMux=portMUX_INITIALIZER_UNLOCKED;
+static volatile bool rbLiveValid=false;
+static volatile uint32_t rbLivePackets=0;
+static float rbSpeedKmh=0;
+static uint8_t rbFix=0,rbSats=0;
+static uint8_t rbStream[512];
+static size_t rbStreamLen=0;
 static NimBLERemoteCharacteristic *rbTx=nullptr,*rbRx=nullptr;
 enum ConnectState : uint8_t { CONN_IDLE, CONN_WORKING, CONN_OK, CONN_FAIL };
 static volatile ConnectState connState=CONN_IDLE;
@@ -98,9 +105,37 @@ static volatile int connIndex=-1;
 static ConnectState drawnConnState=CONN_IDLE;
 
 static void rbNotify(NimBLERemoteCharacteristic*, uint8_t *data, size_t len, bool){
-  Serial.printf("RB RX %u:", (unsigned)len);
-  for(size_t i=0;i<len && i<32;i++) Serial.printf(" %02X",data[i]);
-  Serial.println();
+  // RaceBox live stream is UBX framed and BLE notifications may split/coalesce frames.
+  if(len>sizeof(rbStream)-rbStreamLen){
+    rbStreamLen=0;
+  }
+  if(len<=sizeof(rbStream)-rbStreamLen){
+    memcpy(rbStream+rbStreamLen,data,len); rbStreamLen+=len;
+  }
+  while(rbStreamLen>=8){
+    size_t sync=0;
+    while(sync+1<rbStreamLen && !(rbStream[sync]==0xB5 && rbStream[sync+1]==0x62)) sync++;
+    if(sync){
+      memmove(rbStream,rbStream+sync,rbStreamLen-sync); rbStreamLen-=sync;
+      if(rbStreamLen<8) break;
+    }
+    uint16_t plen=(uint16_t)rbStream[4] | ((uint16_t)rbStream[5]<<8);
+    size_t frameLen=(size_t)plen+8;
+    if(frameLen>sizeof(rbStream)){ rbStreamLen=0; break; }
+    if(rbStreamLen<frameLen) break;
+    uint8_t a=0,b=0;
+    for(size_t i=2;i<6u+plen;i++){ a=(uint8_t)(a+rbStream[i]); b=(uint8_t)(b+a); }
+    bool checksum=(a==rbStream[6+plen] && b==rbStream[7+plen]);
+    if(checksum && rbStream[2]==0xFF && rbStream[3]==0x01 && plen>=80){
+      const uint8_t *p=rbStream+6;
+      uint32_t speedMm=0; memcpy(&speedMm,p+48,4);
+      portENTER_CRITICAL(&rbDataMux);
+      rbFix=p[20]; rbSats=p[23]; rbSpeedKmh=speedMm*0.0036f;
+      rbLivePackets++; rbLiveValid=true;
+      portEXIT_CRITICAL(&rbDataMux);
+    }
+    memmove(rbStream,rbStream+frameLen,rbStreamLen-frameLen); rbStreamLen-=frameLen;
+  }
 }
 
 static bool probeRaceBoxIndex(int idx){
@@ -176,6 +211,23 @@ static int autoFindRaceBox(){
     if(probeRaceBoxAddress(raceboxAddr[i])) return i;
   }
   return -1;
+}
+static void drawRaceBoxLive(){
+  uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800);
+  float speed; uint8_t fix,sats; uint32_t packets; bool valid;
+  portENTER_CRITICAL(&rbDataMux);
+  speed=rbSpeedKmh; fix=rbFix; sats=rbSats; packets=rbLivePackets; valid=rbLiveValid;
+  portEXIT_CRITICAL(&rbDataMux);
+  for(size_t i=0;i<180u*640u;i++)screen[i]=black;
+  rect(0,0,640,4,green);
+  rect(12,12,120,22,rbConnected?green:red);
+  rect(148,12,120,22,valid?green:gray);
+  char sp[16]; snprintf(sp,sizeof(sp),"%03d",(int)(speed+0.5f));
+  num(22,58,sp,10,white);
+  num(360,58,String(sats).c_str(),7,green);
+  num(500,58,String(fix).c_str(),7,fix>=2?green:red);
+  num(500,130,String(packets%10000).c_str(),3,gray);
+  present();
 }
 static bool readTouch(int &lx,int &ly){
   uint8_t cmd[8]={0xb5,0xab,0xa5,0x5a,0,0,0,8},b[14]={0};
@@ -292,7 +344,13 @@ void loop(){
       saveRaceBox(raceboxAddr[selectedRacebox]);
     }
     while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
-    drawRaceBoxList();
+    if(connState==CONN_OK) drawRaceBoxLive(); else drawRaceBoxList();
+  }
+  static uint32_t lastLiveDraw=0;
+  if(connState==CONN_OK && millis()-lastLiveDraw>=250){
+    lastLiveDraw=millis();
+    while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+    drawRaceBoxLive();
   }
   int x,y; bool down=readTouch(x,y);
   static uint32_t lastDiag=0;
