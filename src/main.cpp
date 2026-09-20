@@ -4,6 +4,7 @@
 #include <NimBLEDevice.h>
 #include <Preferences.h>
 #include <Wire.h>
+#include <math.h>
 
 extern uint32_t transfer_num;
 extern size_t lcd_PushColors_len;
@@ -118,6 +119,11 @@ static int32_t lapDeltaMs=0;
 static bool lapDeltaValid=false;
 static uint16_t lapCount=0;
 static bool lapClockRunning=false;
+// Custom start/finish: long-press dashboard to arm a line at the current GNSS point.
+// The line is perpendicular to the vehicle heading estimated from consecutive GNSS fixes.
+static bool customLineValid=false, customLineArmed=false, havePrevFix=false;
+static double customLat=0,customLon=0,customDirX=0,customDirY=0,prevLat=0,prevLon=0;
+static uint32_t customSavedAt=0,lastCrossTow=0;
 static uint8_t rbStream[512];
 static size_t rbStreamLen=0;
 static NimBLERemoteCharacteristic *rbTx=nullptr,*rbRx=nullptr;
@@ -255,10 +261,48 @@ static void fmtDelta(int32_t ms,char *out,size_t n){
   uint32_t a=(uint32_t)(ms<0?-ms:ms);
   snprintf(out,n,"%c%lu.%03lu",sign,(unsigned long)(a/1000u),(unsigned long)(a%1000u));
 }
+static double localX(double lon,double lat0){ return lon*111320.0*cos(lat0*0.017453292519943295); }
+static double localY(double lat){ return lat*110540.0; }
+static void saveCustomLine(){
+  double lat,lon; uint8_t fix; float speed;
+  portENTER_CRITICAL(&rbDataMux); lat=rbLat; lon=rbLon; fix=rbFix; speed=rbSpeedKmh; portEXIT_CRITICAL(&rbDataMux);
+  if(fix<2 || speed<3.0f || !havePrevFix) return;
+  double dx=localX(lon,lat)-localX(prevLon,lat), dy=localY(lat)-localY(prevLat);
+  double n=sqrt(dx*dx+dy*dy); if(n<0.20) return;
+  customLat=lat; customLon=lon; customDirX=dx/n; customDirY=dy/n; customLineValid=true; customLineArmed=false;
+  lapClockRunning=false; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false; lastCrossTow=0; customSavedAt=millis();
+  prefs.begin("proot",false); prefs.putDouble("sfLat",customLat); prefs.putDouble("sfLon",customLon);
+  prefs.putDouble("sfDx",customDirX); prefs.putDouble("sfDy",customDirY); prefs.putBool("sfOk",true); prefs.end();
+  Serial.printf("CUSTOM SF %.7f %.7f dir %.3f %.3f\\n",customLat,customLon,customDirX,customDirY);
+}
 static void updateLapClock(){
-  uint32_t tow; uint8_t fix;
-  portENTER_CRITICAL(&rbDataMux); tow=rbTowMs; fix=rbFix; portEXIT_CRITICAL(&rbDataMux);
-  if(fix>=2 && !lapClockRunning){ lapStartTow=tow; lapClockRunning=true; }
+  double lat,lon; uint32_t tow; uint8_t fix; float speed;
+  portENTER_CRITICAL(&rbDataMux); tow=rbTowMs; fix=rbFix; lat=rbLat; lon=rbLon; speed=rbSpeedKmh; portEXIT_CRITICAL(&rbDataMux);
+  if(fix<2) return;
+  if(customLineValid && havePrevFix){
+    double x0=localX(customLon,customLat), y0=localY(customLat);
+    double px=localX(prevLon,customLat)-x0, py=localY(prevLat)-y0;
+    double cx=localX(lon,customLat)-x0, cy=localY(lat)-y0;
+    // Signed distance along travel direction; crossing zero means crossing the perpendicular S/F line.
+    double prevAlong=px*customDirX+py*customDirY, curAlong=cx*customDirX+cy*customDirY;
+    double lateral=fabs(cx*(-customDirY)+cy*customDirX);
+    if(curAlong < -8.0) customLineArmed=true;
+    if(customLineArmed && prevAlong<=0.0 && curAlong>0.0 && lateral<25.0 && speed>5.0f && (lastCrossTow==0 || tow-lastCrossTow>10000u)){
+      lastCrossTow=tow; customLineArmed=false;
+      if(lapClockRunning){
+        uint32_t lap=tow-lapStartTow;
+        if(lap>10000u){ lapLastMs=lap; if(!lapBestMs || lap<lapBestMs) lapBestMs=lap; lapCount++; }
+      }
+      lapStartTow=tow; lapClockRunning=true; lapDeltaValid=false;
+      Serial.printf("LAP CROSS #%u last=%lu best=%lu\\n",lapCount,(unsigned long)lapLastMs,(unsigned long)lapBestMs);
+    }
+    if(lapClockRunning && lapLastMs){
+      uint32_t elapsed=tow-lapStartTow;
+      lapDeltaMs=(int32_t)elapsed-(int32_t)lapLastMs;
+      lapDeltaValid=true;
+    }
+  }
+  prevLat=lat; prevLon=lon; havePrevFix=true;
 }
 
 static void drawRaceBoxLive(){
@@ -280,6 +324,10 @@ static void drawRaceBoxLive(){
     char d[16]; fmtDelta(lapDeltaMs,d,sizeof(d));
     num(250,130,d,4,lapDeltaMs<=0?green:red);
   }
+  if(customLineValid) rect(600,12,28,22,green);
+  if(lapLastMs){ char t[16]; fmtLap(lapLastMs,t,sizeof(t)); num(12,140,t,2,white); }
+  if(lapBestMs){ char t[16]; fmtLap(lapBestMs,t,sizeof(t)); num(180,140,t,2,green); }
+  if(lapCount) num(570,140,String(lapCount).c_str(),3,white);
   // Packet counter kept internally; do not show it on the normal dashboard.
   present();
 }
@@ -374,7 +422,10 @@ void setup(){
   present();
   while(transfer_num>0 && lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
   Serial.println("BLE SCANNING");
-  prefs.begin("proot",true); savedRbAddr=prefs.getString("rbAddr",""); prefs.end();
+  prefs.begin("proot",true); savedRbAddr=prefs.getString("rbAddr","");
+  customLineValid=prefs.getBool("sfOk",false);
+  if(customLineValid){ customLat=prefs.getDouble("sfLat",0); customLon=prefs.getDouble("sfLon",0); customDirX=prefs.getDouble("sfDx",0); customDirY=prefs.getDouble("sfDy",0); }
+  prefs.end();
   scanRaceBoxes();
   // PRÖÖT-style behavior: prefer the previously selected RaceBox address.
   if(savedRbAddr.length()){
@@ -439,8 +490,18 @@ void loop(){
   if(down&&!touchDown) Serial.printf("TOUCH DOWN x=%d y=%d\\n",x,y);
   // On the live dashboard a normal tap must not disconnect RaceBox.
   // Navigation/settings will get explicit touch zones later.
+  static uint32_t dashTouchSince=0; static bool dashLongDone=false;
+  if(connState==CONN_OK){
+    if(down && !touchDown){ dashTouchSince=millis(); dashLongDone=false; }
+    if(down && !dashLongDone && millis()-dashTouchSince>=1500){
+      saveCustomLine(); dashLongDone=true;
+      while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+      drawRaceBoxLive();
+    }
+    if(!down){ dashTouchSince=0; dashLongDone=false; }
+  }
   if(connState==CONN_OK && down&&!touchDown){
-    // no-op: keep RaceBox connected and stay on dashboard
+    // short tap is intentionally a no-op; hold 1.5 s to save custom S/F.
   } else if(connState!=CONN_OK && down&&!touchDown&&y>=150 && raceboxCount>4){
     listPage=(listPage+1)%((raceboxCount+3)/4);
     while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
