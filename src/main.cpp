@@ -18,6 +18,8 @@ static int listPage=0;
 static int bleSeen=0;
 static bool touchDown=false;
 static bool rbConnected=false;
+static bool askLastDevice=false;
+static int savedRaceboxIndex=-1;
 static String connectedAddr="";
 static Preferences prefs;
 static String savedRbAddr="";
@@ -407,6 +409,20 @@ static bool readTouch(int &lx,int &ly){
   lx=constrain(lx,0,639); ly=constrain(ly,0,179);
   return true;
 }
+static void drawLastDevicePrompt(){
+  uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),red=C(0xF800),gray=C(0x4208);
+  for(size_t i=0;i<180u*640u;i++)screen[i]=black;
+  text5(92,22,"CONNECT TO LAST DEVICE",3,white);
+  if(savedRaceboxIndex>=0 && savedRaceboxIndex<raceboxCount){
+    String id="";
+    for(int k=0;k<raceboxes[savedRaceboxIndex].length();k++) if(isDigit(raceboxes[savedRaceboxIndex][k])) id+=raceboxes[savedRaceboxIndex][k];
+    if(id.length()>10) id=id.substring(id.length()-10);
+    if(id.length()) num(248,62,id.c_str(),3,gray);
+  }
+  rect(70,108,220,54,green); text5(145,122,"YES",4,black);
+  rect(350,108,220,54,red); text5(435,122,"NO",4,white);
+  present();
+}
 static void drawRaceBoxList(){
   uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800),dark=C(0x2104);
   for(size_t i=0;i<180u*640u;i++)screen[i]=black;
@@ -484,6 +500,7 @@ void setup(){
   if(savedRbAddr.length()){
     for(int i=0;i<raceboxCount;i++) if(raceboxAddr[i].equalsIgnoreCase(savedRbAddr)){
       selectedRacebox=i;
+      savedRaceboxIndex=i;
       Serial.printf("Saved RaceBox found at row %d: %s\\n",i+1,savedRbAddr.c_str());
       break;
     }
@@ -493,13 +510,14 @@ void setup(){
   Serial.printf("RaceBox found: %d\\n",raceboxCount);
   for(int i=0;i<raceboxCount;i++) Serial.printf("%c %d: %s %s\\n",i==selectedRacebox?'>':' ',i+1,raceboxes[i].c_str(),raceboxAddr[i].c_str());
   while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
-  drawRaceBoxList();
+  if(savedRaceboxIndex>=0){ askLastDevice=true; drawLastDevicePrompt(); }
+  else drawRaceBoxList();
 }
 void loop(){
   if(transfer_num<=1&&lcd_PushColors_len>0)lcd_PushColors(0,0,0,0,NULL);
   processRaceBoxStream();
   updateLapClock();
-  if(connState!=drawnConnState){
+  if(!askLastDevice && connState!=drawnConnState){
     drawnConnState=connState;
     if(connState==CONN_OK && connIndex>=0){
       selectedRacebox=connIndex;
@@ -543,7 +561,20 @@ void loop(){
   if(down&&!touchDown) Serial.printf("TOUCH DOWN x=%d y=%d\\n",x,y);
   // On the live dashboard a normal tap must not disconnect RaceBox.
   // Navigation/settings will get explicit touch zones later.
-  if(connState==CONN_OK && down&&!touchDown){
+  if(askLastDevice && down&&!touchDown){
+    if(y>=108 && y<162 && x>=70 && x<290){
+      askLastDevice=false;
+      selectedRacebox=savedRaceboxIndex;
+      rbConnected=false;
+      startRaceBoxConnect(savedRaceboxIndex);
+      while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+      drawRaceBoxList();
+    } else if(y>=108 && y<162 && x>=350 && x<570){
+      askLastDevice=false;
+      while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+      drawRaceBoxList();
+    }
+  } else if(connState==CONN_OK && down&&!touchDown){
     // Only the red/blue START META button is active on the dashboard.
     if(x>=12 && x<84 && y>=148 && y<180){
       saveCustomLine();
