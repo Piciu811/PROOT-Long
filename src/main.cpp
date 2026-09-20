@@ -384,7 +384,7 @@ static void drawRaceBoxLive(){
   // LAP label sits directly below the millisecond end of the main time.
   // The two-digit count fills the lower gap before D without touching either area.
   char lapNo[3]; snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));
-  text5(302,116,"LAP",2,yellow);
+  text5(240,141,"LAP",2,yellow);
   numTallBold(278,122,lapNo,7,7,yellow);
   // Right side fills the available height with equal top/bottom/inter-row spacing.
   // Always draw zero values until real timing data exists.
