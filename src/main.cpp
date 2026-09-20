@@ -119,7 +119,7 @@ static int32_t lapDeltaMs=0;
 static bool lapDeltaValid=false;
 static uint16_t lapCount=0;
 static bool lapClockRunning=false;
-// Custom start/finish: long-press dashboard to arm a line at the current GNSS point.
+// Custom start/finish: long-press dashboard to arm a line at the current GNSS point. Build trigger 2026-09-20.
 // The line is perpendicular to the vehicle heading estimated from consecutive GNSS fixes.
 static bool customLineValid=false, customLineArmed=false, havePrevFix=false;
 static double customLat=0,customLon=0,customDirX=0,customDirY=0,prevLat=0,prevLon=0;
