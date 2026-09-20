@@ -114,6 +114,8 @@ static double rbLat=0,rbLon=0;
 static uint32_t rbTowMs=0;
 static uint8_t rbFix=0,rbSats=0;
 static uint32_t lapStartTow=0, lapLastMs=0, lapBestMs=0;
+static int32_t lapDeltaMs=0;
+static bool lapDeltaValid=false;
 static uint16_t lapCount=0;
 static bool lapClockRunning=false;
 static uint8_t rbStream[512];
@@ -248,6 +250,11 @@ static void fmtLap(uint32_t ms,char *out,size_t n){
   uint32_t sec=ms/1000u, millisec=ms%1000u;
   snprintf(out,n,"%02lu:%02lu.%03lu",(unsigned long)min,(unsigned long)sec,(unsigned long)millisec);
 }
+static void fmtDelta(int32_t ms,char *out,size_t n){
+  char sign=ms<=0?'-':'+';
+  uint32_t a=(uint32_t)(ms<0?-ms:ms);
+  snprintf(out,n,"%c%lu.%03lu",sign,(unsigned long)(a/1000u),(unsigned long)(a%1000u));
+}
 static void updateLapClock(){
   uint32_t tow; uint8_t fix;
   portENTER_CRITICAL(&rbDataMux); tow=rbTowMs; fix=rbFix; portEXIT_CRITICAL(&rbDataMux);
@@ -269,6 +276,10 @@ static void drawRaceBoxLive(){
   num(22,58,lap,6,white);
   num(360,58,String(sats).c_str(),7,green);
   num(500,58,String(fix).c_str(),7,fix>=2?green:red);
+  if(lapDeltaValid){
+    char d[16]; fmtDelta(lapDeltaMs,d,sizeof(d));
+    num(250,130,d,4,lapDeltaMs<=0?green:red);
+  }
   // Packet counter kept internally; do not show it on the normal dashboard.
   present();
 }
