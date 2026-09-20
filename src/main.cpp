@@ -451,7 +451,7 @@ static void drawRaceBoxLive(){
   // LAP label sits directly below the millisecond end of the main time.
   // The two-digit count fills the lower gap before D without touching either area.
   char lapNo[3]; snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));
-  text5(240,141,"LAP",2,yellow);
+  text5(280,141,"LAP",2,yellow);
   numTallBold(288,122,lapNo,7,7,yellow);
   // Large STOP button in the center gutter, between the main timer and right panel.
   uint16_t darkgray=C(0x2104);
@@ -482,9 +482,10 @@ static void drawRaceBoxLive(){
       text5(602,158,"DN",1,gray);
     }
   }
-  // Small dark-gray controls at bottom-left.
-  rect(12,151,72,24,darkgray);
-  text5(31,156,"S/M",2,customLineValid?blue:red);
+  // 70x70 S/M button immediately before the LAP area.
+  rect(210,105,70,70,darkgray);
+  text5(223,129,"S/M",3,customLineValid?blue:red);
+  // SAT remains a small status control at bottom-left.
   rect(90,151,58,24,darkgray);
   text5(101,156,"SAT",2,sats>0?green:red);
   // Packet counter kept internally; do not show it on the normal dashboard.
@@ -707,7 +708,7 @@ void loop(){
       stopLongDone=false;
     }
     if(down && !touchDown && !onStop){
-      if(x>=12 && x<84 && y>=148 && y<180){
+      if(x>=210 && x<280 && y>=105 && y<175){
         saveCustomLine();
         while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
         drawRaceBoxLive();
