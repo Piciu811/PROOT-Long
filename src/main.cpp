@@ -408,49 +408,42 @@ static bool readTouch(int &lx,int &ly){
   return true;
 }
 static void drawRaceBoxList(){
-  uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800);
+  uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800),dark=C(0x2104);
   for(size_t i=0;i<180u*640u;i++)screen[i]=black;
-  rect(0,0,640,4,green);
-  // Header/status blocks: green=scan complete, red=no devices.
-  rect(12,12,180,22,bleSeen?green:red);
-  num(210,10,String(raceboxCount).c_str(),4,white);
-  num(270,10,String(listPage+1).c_str(),4,white);
-  num(306,10,String((raceboxCount+3)/4).c_str(),4,white);
-  // Total BLE advertisements seen, for hardware diagnostics even when no RaceBox matches.
-  num(330,10,String(bleSeen).c_str(),4,white);
-  // One visible row per discovered RaceBox (up to 4 on 180px screen).
-  int first=listPage*4;
-  for(int row=0;row<4;row++){
-    int i=first+row;
+  int pages=max(1,(raceboxCount+2)/3);
+  if(listPage>=pages) listPage=pages-1;
+
+  // Three device rows use only the left half of the screen.
+  int first=listPage*3;
+  for(int row=0;row<3;row++){
+    int i=first+row, y=18+row*50;
     if(i>=raceboxCount) break;
-    int y=46+row*31;
     uint16_t rowColor=gray;
     if(i==selectedRacebox){
       if(connState==CONN_WORKING) rowColor=C(0xFFE0);
       else if(connState==CONN_OK && rbConnected) rowColor=green;
       else if(connState==CONN_FAIL) rowColor=red;
     }
-    rect(12,y,616,25,rowColor);
-    num(22,y+3,String(i+1).c_str(),3,black);
-    // RaceBox advertises a human-visible serial in its BLE name on supported models.
-    // Show all decimal digits from the advertised name; fall back to BLE address suffix.
+    rect(12,y,300,38,rowColor);
+    num(22,y+7,String(i+1).c_str(),3,black);
     String id="";
     for(int k=0;k<raceboxes[i].length();k++) if(isDigit(raceboxes[i][k])) id+=raceboxes[i][k];
     if(!id.length()){
-      String a=raceboxAddr[i];
-      for(int k=0;k<a.length();k++) if(isHexadecimalDigit(a[k])) id+=a[k];
+      String ad=raceboxAddr[i];
+      for(int k=0;k<ad.length();k++) if(isHexadecimalDigit(ad[k])) id+=ad[k];
       if(id.length()>4) id=id.substring(id.length()-4);
     }
-    if(id.length()>10) id=id.substring(id.length()-10);
-    num(92,y+3,id.c_str(),3,white);
+    if(id.length()>8) id=id.substring(id.length()-8);
+    num(76,y+7,id.c_str(),3,white);
   }
-  // Visible paging controls at the bottom corners when more than four devices exist.
-  if(raceboxCount>4){
-    rect(4,150,72,26,gray);
-    rect(564,150,72,26,green);
-    num(26,152,String(listPage+1).c_str(),3,white);
-    num(586,152,String((listPage+1)%((raceboxCount+3)/4)+1).c_str(),3,black);
-  }
+
+  // Right half: UP, current page, DN.
+  rect(390,12,190,42,dark); text5(447,22,"UP",3,white);
+  rect(390,69,190,42,dark);
+  num(438,76,String(listPage+1).c_str(),4,white);
+  text5(478,79,"OF",2,white);
+  num(522,76,String(pages).c_str(),4,white);
+  rect(390,126,190,42,dark); text5(447,136,"DN",3,white);
   present();
 }
 void setup(){
@@ -557,13 +550,19 @@ void loop(){
       while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
       drawRaceBoxLive();
     }
-  } else if(connState!=CONN_OK && down&&!touchDown&&y>=150 && raceboxCount>4){
-    listPage=(listPage+1)%((raceboxCount+3)/4);
+  } else if(connState!=CONN_OK && down&&!touchDown&&x>=390&&x<580&&y>=12&&y<54){
+    int pages=max(1,(raceboxCount+2)/3);
+    listPage=(listPage+pages-1)%pages;
     while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
     drawRaceBoxList();
-  } else if(connState!=CONN_OK && down&&!touchDown&&x>=12&&x<628&&y>=46&&y<145){
-    int row=(y-46)/31;
-    int idx=listPage*4+row;
+  } else if(connState!=CONN_OK && down&&!touchDown&&x>=390&&x<580&&y>=126&&y<168){
+    int pages=max(1,(raceboxCount+2)/3);
+    listPage=(listPage+1)%pages;
+    while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+    drawRaceBoxList();
+  } else if(connState!=CONN_OK && down&&!touchDown&&x>=12&&x<312&&y>=18&&y<156){
+    int row=(y-18)/50;
+    int idx=listPage*3+row;
     if(idx>=0&&idx<raceboxCount){
       selectedRacebox=idx;
       Serial.printf("Selected BLE %d: %s %s\\n",idx+1,raceboxes[idx].c_str(),raceboxAddr[idx].c_str());
