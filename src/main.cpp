@@ -409,8 +409,8 @@ static void drawRaceBoxLive(){
   numTallBold(278,122,lapNo,7,7,yellow);
   // Large STOP button in the center gutter, between the main timer and right panel.
   uint16_t darkgray=C(0x2104);
-  rect(242,52,118,64,darkgray);
-  text5(263,72,"STOP",4,white);
+  rect(292,30,80,120,darkgray);
+  text5(300,76,"STOP",3,white);
 
   // Before STOP keep the normal L/B/D panel. After STOP show the lap-history view.
   if(!timingStopped){
@@ -632,21 +632,24 @@ void loop(){
   } else if(connState==CONN_OK){
     static uint32_t stopPressStarted=0;
     static bool stopLongDone=false;
-    bool onStop=(x>=242 && x<360 && y>=52 && y<116);
+    bool onStop=(x>=292 && x<372 && y>=30 && y<150);
     if(down && !touchDown && onStop){ stopPressStarted=millis(); stopLongDone=false; }
     if(down && onStop && stopPressStarted && !stopLongDone && millis()-stopPressStarted>=4000u){
       // Full reset: forget recorded laps and custom S/F, returning to the state before S/M.
       lapClockRunning=false; timingStopped=false; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false;
       lapHistoryN=0; lapHistoryPage=0; refTraceN=curTraceN=refCursor=0; lastTraceTow=0; lastCrossTow=0;
-      customLineValid=false; customLineArmed=false; customDirectionPending=false;
-      prefs.begin("proot",false); prefs.putBool("sfOk",false); prefs.end();
+      customLineValid=false; customLineArmed=false; customDirectionPending=false; havePrevFix=false;
+      customLat=customLon=customDirX=customDirY=prevLat=prevLon=0; customSavedAt=0; lapFlashStarted=0;
+      prefs.begin("proot",false);
+      prefs.putBool("sfOk",false); prefs.remove("sfLat"); prefs.remove("sfLon"); prefs.remove("sfDx"); prefs.remove("sfDy");
+      prefs.end();
       stopLongDone=true;
       while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
       drawRaceBoxLive();
     }
     if(!down && touchDown && stopPressStarted){
       if(!stopLongDone && millis()-stopPressStarted<4000u){
-        timingStopped=true; lapClockRunning=false; lapDeltaValid=false;
+        timingStopped=true; lapClockRunning=false; lapDeltaValid=false; lapFlashStarted=0;
         while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
         drawRaceBoxLive();
       }
