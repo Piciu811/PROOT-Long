@@ -245,8 +245,8 @@ static int autoFindRaceBox(){
 }
 static void fmtLap(uint32_t ms,char *out,size_t n){
   uint32_t min=ms/60000u; ms%=60000u;
-  uint32_t sec=ms/1000u, tenth=(ms%1000u)/100u;
-  snprintf(out,n,"%02lu:%02lu.%01lu",(unsigned long)min,(unsigned long)sec,(unsigned long)tenth);
+  uint32_t sec=ms/1000u, hundredths=(ms%1000u)/10u;
+  snprintf(out,n,"%02lu:%02lu.%02lu",(unsigned long)min,(unsigned long)sec,(unsigned long)hundredths);
 }
 static void updateLapClock(){
   uint32_t tow; uint8_t fix;
