@@ -449,7 +449,8 @@ static void drawRaceBoxList(){
       for(int k=0;k<ad.length();k++) if(isHexadecimalDigit(ad[k])) id+=ad[k];
       if(id.length()>4) id=id.substring(id.length()-4);
     }
-    if(id.length()>8) id=id.substring(id.length()-8);
+    // Keep the complete RaceBox serial; the 300px row has room for the full number.
+    if(id.length()>12) id=id.substring(id.length()-12);
     num(76,y+7,id.c_str(),3,white);
   }
 
