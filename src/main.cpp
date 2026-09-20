@@ -175,6 +175,13 @@ static void drawRaceBoxList(){
     if(id.length()>10) id=id.substring(id.length()-10);
     num(92,y+3,id.c_str(),3,white);
   }
+  // Visible paging controls at the bottom corners when more than four devices exist.
+  if(raceboxCount>4){
+    rect(4,150,72,26,gray);
+    rect(564,150,72,26,green);
+    num(26,152,String(listPage+1).c_str(),3,white);
+    num(586,152,String((listPage+1)%((raceboxCount+3)/4)+1).c_str(),3,black);
+  }
   present();
 }
 void setup(){
@@ -227,12 +234,7 @@ void loop(){
     int err=Wire.endTransmission();
     Serial.printf("TOUCH I2C=%d INT=%d\\n",err,digitalRead(TOUCH_INT));
   }
-  if(down&&!touchDown){
-    Serial.printf("TOUCH DOWN x=%d y=%d\\n",x,y);
-    rect(x-12,y-12,24,24,C(0xFFFF));
-    while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
-    present();
-  }
+  if(down&&!touchDown) Serial.printf("TOUCH DOWN x=%d y=%d\\n",x,y);
   if(down&&!touchDown&&y>=150 && raceboxCount>4){
     listPage=(listPage+1)%((raceboxCount+3)/4);
     while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
