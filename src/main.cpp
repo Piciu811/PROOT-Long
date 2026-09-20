@@ -539,7 +539,8 @@ void setup(){
   text5(24,48,"AEP",10,white);
   text5(230,48,"Racing",4,white);
   text5(230,88,"Development",3,gray);
-  text5(230,118,"Tel: +48 501766987",1,gray);
+  text5(230,118,"Tel",2,gray);
+  num(272,118,"+48 501766987",2,gray);
   while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
   present();
   while(transfer_num>0 && lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
@@ -599,7 +600,7 @@ void loop(){
   }
 
   static uint32_t lastDataDraw=0;
-  if(connState==CONN_OK && rbConnected && timingShown && rbLiveValid && millis()-lastDataDraw>=1000){
+  if(connState==CONN_OK && rbConnected && timingShown && rbLiveValid && millis()-lastDataDraw>=100){
     lastDataDraw=millis();
     while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
     drawRaceBoxLive();
@@ -635,7 +636,7 @@ void loop(){
     static bool stopLongDone=false;
     bool onStop=(x>=287 && x<367 && y>=0 && y<80);
     if(down && !touchDown && onStop && !stopLongDone){ stopPressStarted=millis(); }
-    if(down && stopPressStarted && !stopLongDone && millis()-stopPressStarted>=2500u){
+    if(down && stopPressStarted && !stopLongDone && millis()-stopPressStarted>=1500u){
       // Full reset: forget recorded laps and custom S/F, returning to the state before S/M.
       lapClockRunning=false; timingStopped=false; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false;
       lapHistoryN=0; lapHistoryPage=0; refTraceN=curTraceN=refCursor=0; lastTraceTow=0; lastCrossTow=0;
@@ -651,7 +652,7 @@ void loop(){
       drawRaceBoxLive();
     }
     if(!down && touchDown){
-      if(stopPressStarted && !stopLongDone && millis()-stopPressStarted<2500u){
+      if(stopPressStarted && !stopLongDone && millis()-stopPressStarted<1500u){
         timingStopped=true; lapClockRunning=false; lapDeltaValid=false; lapFlashStarted=0;
         while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
         drawRaceBoxLive();
