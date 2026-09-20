@@ -363,21 +363,21 @@ static void drawRaceBoxLive(){
   // Top-left status tiles removed for a cleaner timing view.
   char lap[16]; uint32_t elapsed=(lapClockRunning && tow>=lapStartTow)?tow-lapStartTow:0;
   fmtLap(elapsed,lap,sizeof(lap));
-  // Main current lap remains large on the left.
-  num(12,12,lap,5,white);
-  // Maximum-size timing readouts on the right.
-  text5(340,10,"LAST",2,white);
-  if(lapLastMs){ char t[16]; fmtLap(lapLastMs,t,sizeof(t)); num(420,6,t,3,white); }
-  text5(340,60,"BEST",2,green);
-  if(lapBestMs){ char t[16]; fmtLap(lapBestMs,t,sizeof(t)); num(420,56,t,3,green); }
-  text5(340,110,"DELTA",2,white);
-  if(lapDeltaValid){ char dt[16]; fmtDelta(lapDeltaMs,dt,sizeof(dt)); num(440,106,dt,3,lapDeltaMs<=0?green:red); }
-  // Bottom-left START/META button, with SAT status tile directly beside it.
-  uint16_t blue=C(0x001F);
-  rect(12,140,150,34,customLineValid?blue:red);
-  text5(22,147,"START",2,white); text5(86,147,"META",2,white);
-  rect(174,140,72,34,sats>0?green:red);
-  text5(187,147,"SAT",2,white);
+  // Current lap: centered vertically on the left and as large as practical.
+  num(8,58,lap,6,white);
+  // Right side: single-letter labels leave maximum width for the times.
+  text5(338,8,"L",3,white);
+  if(lapLastMs){ char t[16]; fmtLap(lapLastMs,t,sizeof(t)); num(382,4,t,4,white); }
+  text5(338,62,"B",3,green);
+  if(lapBestMs){ char t[16]; fmtLap(lapBestMs,t,sizeof(t)); num(382,58,t,4,green); }
+  text5(338,116,"D",3,white);
+  if(lapDeltaValid){ char dt[16]; fmtDelta(lapDeltaMs,dt,sizeof(dt)); num(382,112,dt,4,lapDeltaMs<=0?green:red); }
+  // Small dark-gray controls at bottom-left.
+  uint16_t darkgray=C(0x2104);
+  rect(12,151,72,24,darkgray);
+  text5(31,156,"S/M",2,customLineValid?blue:red);
+  rect(90,151,58,24,darkgray);
+  text5(101,156,"SAT",2,sats>0?green:red);
   // Packet counter kept internally; do not show it on the normal dashboard.
   present();
 }
@@ -542,7 +542,7 @@ void loop(){
   // Navigation/settings will get explicit touch zones later.
   if(connState==CONN_OK && down&&!touchDown){
     // Only the red/blue START META button is active on the dashboard.
-    if(x>=12 && x<162 && y>=136 && y<180){
+    if(x>=12 && x<84 && y>=148 && y<180){
       saveCustomLine();
       while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
       drawRaceBoxLive();
