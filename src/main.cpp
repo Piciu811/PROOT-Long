@@ -6,6 +6,7 @@
 #include <Wire.h>
 #include <math.h>
 #include "tracks_europe.h"
+#include "track_names.h"
 
 extern uint32_t transfer_num;
 extern size_t lcd_PushColors_len;
@@ -154,6 +155,8 @@ static double customLat=0,customLon=0,customDirX=0,customDirY=0,prevLat=0,prevLo
 static uint32_t customSavedAt=0,lastCrossTow=0;
 static bool factoryTrackActive=false;
 static uint16_t factoryTrackId=0;
+static int16_t factoryTrackIndex=-1;
+static bool manualCustomLine=false;
 static uint32_t lastTrackDetectMs=0;
 struct LapPoint { float x,y; uint32_t t; };
 static const uint16_t LAP_TRACE_MAX=2400;
@@ -325,14 +328,14 @@ static void detectFactoryTrack(double lat,double lon){
     if(vx*customDirX+vy*customDirY<0){customDirX=-customDirX;customDirY=-customDirY;}
   }
   customLineValid=true; customDirectionPending=false; customLineArmed=false;
-  factoryTrackActive=true; factoryTrackId=t.id; lastCrossTow=0;
+  factoryTrackActive=true; factoryTrackId=t.id; factoryTrackIndex=best; manualCustomLine=false; lastCrossTow=0;
   Serial.printf("AUTO TRACK id=%u distance=%.0fm\\n",(unsigned)factoryTrackId,sqrt(bestD2));
 }
 static void saveCustomLine(){
   double lat,lon; uint8_t fix; float speed;
   portENTER_CRITICAL(&rbDataMux); lat=rbLat; lon=rbLon; fix=rbFix; speed=rbSpeedKmh; portEXIT_CRITICAL(&rbDataMux);
   if(fix<2) return;
-  factoryTrackActive=false; factoryTrackId=0;
+  factoryTrackActive=false; factoryTrackId=0; factoryTrackIndex=-1; manualCustomLine=true;
   customLat=lat; customLon=lon; customLineValid=true; customLineArmed=false;
   // If moving, derive direction immediately. If stationary, learn it after moving ~3 m.
   customDirectionPending=true;
@@ -426,6 +429,14 @@ static void drawRaceBoxLive(){
   portEXIT_CRITICAL(&rbDataMux);
   for(size_t i=0;i<180u*640u;i++)screen[i]=black;
   // Top status line removed for a cleaner timing view.
+  // Track name in the upper-left corner. Manual S/M is always shown as Custom.
+  if(manualCustomLine){
+    text5(6,6,"Custom",2,white);
+  } else if(factoryTrackActive && factoryTrackIndex>=0){
+    const char* p=(const char*)pgm_read_ptr(&PROOT_TRACK_NAMES[factoryTrackIndex]);
+    char trackName[40]; strncpy_P(trackName,p,sizeof(trackName)-1); trackName[sizeof(trackName)-1]=0;
+    text5(6,6,trackName,2,white);
+  }
   char lap[16]; uint32_t elapsed=(lapClockRunning && tow>=lapStartTow)?tow-lapStartTow:0;
   fmtLap(elapsed,lap,sizeof(lap));
   // After crossing S/F, hold the completed lap time for five seconds.
