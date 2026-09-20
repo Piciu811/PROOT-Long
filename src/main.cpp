@@ -366,7 +366,7 @@ static void updateLapClock(){
 }
 
 static void drawRaceBoxLive(){
-  uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800),blue=C(0x001F);
+  uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800),blue=C(0x001F),yellow=C(0xFFE0);
   float speed; uint8_t fix,sats; uint32_t packets,tow; bool valid;
   portENTER_CRITICAL(&rbDataMux);
   speed=rbSpeedKmh; fix=rbFix; sats=rbSats; packets=rbLivePackets; valid=rbLiveValid; tow=rbTowMs;
@@ -382,10 +382,11 @@ static void drawRaceBoxLive(){
   if(flashActive) fmtLap(lapLastMs,mainTime,sizeof(mainTime)); else snprintf(mainTime,sizeof(mainTime),"%s",lap);
   if(flashShow) numTallBold(6,48,mainTime,5,9,white);
 
-  // Two-digit completed lap counter in the center gutter.
+  // Large two-digit completed lap counter at the bottom of the center gutter.
+  // Keep it clear of the main time, right-side L/B/D and bottom-left controls.
   char lapNo[3]; snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));
-  text5(296,46,"LAP",2,gray);
-  num(296,68,lapNo,5,white);
+  text5(284,142,"LAP",2,yellow);
+  num(326,137,lapNo,5,yellow);
   // Right side fills the available height with equal top/bottom/inter-row spacing.
   // Always draw zero values until real timing data exists.
   char lt[16],bt[16],dt[16];
