@@ -338,6 +338,23 @@ void loop(){
     while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
     drawRaceBoxList();
   }
+  // After a confirmed RaceBox connection, leave the selector and show the timing
+  // screen exactly once. BLE notification callback remains a no-op in this build.
+  static bool timingShown=false;
+  static uint32_t connOkSince=0;
+  if(connState==CONN_OK && rbConnected){
+    if(!connOkSince) connOkSince=millis();
+    if(!timingShown && millis()-connOkSince>=750){
+      // Fully drain any previous LCD DMA transfer before replacing the framebuffer.
+      while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+      drawRaceBoxLive();
+      timingShown=true;
+    }
+  } else {
+    connOkSince=0;
+    timingShown=false;
+  }
+
   int x,y; bool down=readTouch(x,y);
   static uint32_t lastDiag=0;
   if(millis()-lastDiag>1000){
