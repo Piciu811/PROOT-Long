@@ -451,7 +451,7 @@ static void drawRaceBoxLive(){
   // LAP label sits directly below the millisecond end of the main time.
   // The two-digit count fills the lower gap before D without touching either area.
   char lapNo[3]; snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));
-  text5(280,141,"LAP",2,yellow);
+  text5(240,141,"LAP",2,yellow);
   numTallBold(288,122,lapNo,7,7,yellow);
   // Large STOP button in the center gutter, between the main timer and right panel.
   uint16_t darkgray=C(0x2104);
@@ -482,9 +482,11 @@ static void drawRaceBoxLive(){
       text5(602,158,"DN",1,gray);
     }
   }
-  // 70x70 S/M button immediately before the LAP area.
-  rect(210,105,70,70,darkgray);
-  text5(223,129,"S/M",3,customLineValid?blue:red);
+  // S/M restored to the original bottom-left position, enlarged to 72x60.
+  rect(12,115,72,60,darkgray);
+  text5(18,135,"S",3,customLineValid?blue:red);
+  num(42,135,"/",3,customLineValid?blue:red);
+  text5(54,135,"M",3,customLineValid?blue:red);
   // SAT remains a small status control at bottom-left.
   rect(90,151,58,24,darkgray);
   text5(101,156,"SAT",2,sats>0?green:red);
@@ -708,7 +710,7 @@ void loop(){
       stopLongDone=false;
     }
     if(down && !touchDown && !onStop){
-      if(x>=210 && x<280 && y>=105 && y<175){
+      if(x>=12 && x<84 && y>=115 && y<175){
         saveCustomLine();
         while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
         drawRaceBoxLive();
