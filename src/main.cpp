@@ -119,12 +119,47 @@ static volatile ConnectState connState=CONN_IDLE;
 static volatile int connIndex=-1;
 static ConnectState drawnConnState=CONN_IDLE;
 
-static void rbNotify(NimBLERemoteCharacteristic*, uint8_t*, size_t, bool){
-  // Known-stable isolation path: subscription stays active, callback does no work.
+static void rbNotify(NimBLERemoteCharacteristic*, uint8_t *data, size_t len, bool){
+  // Copy only; no parsing and no LCD work in NimBLE callback.
+  portENTER_CRITICAL(&rbDataMux);
+  size_t freeBytes=sizeof(rbStream)-rbStreamLen;
+  size_t take=len<freeBytes?len:freeBytes;
+  if(take){ memcpy(rbStream+rbStreamLen,data,take); rbStreamLen+=take; }
+  portEXIT_CRITICAL(&rbDataMux);
 }
 
 static void processRaceBoxStream(){
-  // intentionally empty: parsing will be reintroduced only after link/UI stability
+  static uint8_t fifo[1024];
+  static size_t fifoLen=0;
+  uint8_t local[512]; size_t n=0;
+  portENTER_CRITICAL(&rbDataMux);
+  n=rbStreamLen;
+  if(n){ memcpy(local,rbStream,n); rbStreamLen=0; }
+  portEXIT_CRITICAL(&rbDataMux);
+  if(n){
+    if(n>sizeof(fifo)-fifoLen) fifoLen=0;
+    if(n<=sizeof(fifo)-fifoLen){ memcpy(fifo+fifoLen,local,n); fifoLen+=n; }
+  }
+  while(fifoLen>=8){
+    size_t s=0;
+    while(s+1<fifoLen && !(fifo[s]==0xB5 && fifo[s+1]==0x62)) s++;
+    if(s){ memmove(fifo,fifo+s,fifoLen-s); fifoLen-=s; if(fifoLen<8) break; }
+    uint16_t plen=(uint16_t)fifo[4]|((uint16_t)fifo[5]<<8);
+    size_t fl=(size_t)plen+8;
+    if(fl>sizeof(fifo)){ fifoLen=0; break; }
+    if(fifoLen<fl) break;
+    uint8_t a=0,b=0;
+    for(size_t i=2;i<6u+plen;i++){ a=(uint8_t)(a+fifo[i]); b=(uint8_t)(b+a); }
+    if(a==fifo[6+plen] && b==fifo[7+plen] && fifo[2]==0xFF && fifo[3]==0x01 && plen>=80){
+      const uint8_t *p=fifo+6;
+      uint32_t speedMm=0; memcpy(&speedMm,p+48,4);
+      portENTER_CRITICAL(&rbDataMux);
+      rbFix=p[20]; rbSats=p[23]; rbSpeedKmh=(float)speedMm*0.0036f;
+      rbLivePackets++; rbLiveValid=true;
+      portEXIT_CRITICAL(&rbDataMux);
+    }
+    memmove(fifo,fifo+fl,fifoLen-fl); fifoLen-=fl;
+  }
 }
 
 static bool probeRaceBoxIndex(int idx){
@@ -353,6 +388,13 @@ void loop(){
   } else {
     connOkSince=0;
     timingShown=false;
+  }
+
+  static uint32_t lastDataDraw=0;
+  if(connState==CONN_OK && rbConnected && timingShown && rbLiveValid && millis()-lastDataDraw>=1000){
+    lastDataDraw=millis();
+    while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+    drawRaceBoxLive();
   }
 
   int x,y; bool down=readTouch(x,y);
