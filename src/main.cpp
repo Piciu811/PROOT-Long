@@ -51,6 +51,21 @@ static void num(int x,int y,const char*t,int s,uint16_t col){
   while(*t){ int id=-1; if(*t>='0'&&*t<='9')id=*t-'0'; else if(*t==':')id=10; else if(*t=='.')id=11;
     if(id>=0)glyph(x,y,id,s,col); x+=6*s; t++; }
 }
+static const uint8_t ALPHA[26][5]={
+ {0x7E,0x11,0x11,0x11,0x7E},{0x7F,0x49,0x49,0x49,0x36},{0x3E,0x41,0x41,0x41,0x22},{0x7F,0x41,0x41,0x22,0x1C},
+ {0x7F,0x49,0x49,0x49,0x41},{0x7F,0x09,0x09,0x09,0x01},{0x3E,0x41,0x49,0x49,0x7A},{0x7F,0x08,0x08,0x08,0x7F},
+ {0x00,0x41,0x7F,0x41,0x00},{0x20,0x40,0x41,0x3F,0x01},{0x7F,0x08,0x14,0x22,0x41},{0x7F,0x40,0x40,0x40,0x40},
+ {0x7F,0x02,0x0C,0x02,0x7F},{0x7F,0x04,0x08,0x10,0x7F},{0x3E,0x41,0x41,0x41,0x3E},{0x7F,0x09,0x09,0x09,0x06},
+ {0x3E,0x41,0x51,0x21,0x5E},{0x7F,0x09,0x19,0x29,0x46},{0x46,0x49,0x49,0x49,0x31},{0x01,0x01,0x7F,0x01,0x01},
+ {0x3F,0x40,0x40,0x40,0x3F},{0x1F,0x20,0x40,0x20,0x1F},{0x7F,0x20,0x18,0x20,0x7F},{0x63,0x14,0x08,0x14,0x63},
+ {0x03,0x04,0x78,0x04,0x03},{0x61,0x51,0x49,0x45,0x43}};
+static void text5(int x,int y,const char*t,int s,uint16_t col){
+  while(*t){ char ch=*t++; if(ch==' '){x+=4*s;continue;} int id=-1;
+    if(ch>='A'&&ch<='Z')id=ch-'A'; else if(ch>='a'&&ch<='z')id=ch-'a';
+    if(id>=0){ for(int cx=0;cx<5;cx++) for(int cy=0;cy<7;cy++) if(ALPHA[id][cx]&(1<<cy)) rect(x+cx*s,y+cy*s,s,s,col); }
+    x+=6*s;
+  }
+}
 static void scanRaceBoxes(){
   NimBLEDevice::init("");
   NimBLEDevice::setPower(ESP_PWR_LVL_P9);
@@ -284,16 +299,12 @@ void setup(){
   for(size_t i=0;i<n;i++)screen[i]=black;
 
   // Startup splash shown while the 10 s BLE scan is running.
-  // AEP / Racing / Development
   rect(0,0,640,180,black);
   rect(0,0,640,4,green);
-  // Large AEP mark using simple block geometry (no extra font dependency).
-  rect(154,35,12,62,white); rect(154,35,64,12,white); rect(206,35,12,62,white); rect(154,61,64,12,white);
-  rect(234,35,12,62,white); rect(234,35,66,12,white); rect(234,61,54,12,white); rect(234,85,66,12,white);
-  rect(316,35,12,62,white); rect(316,35,66,12,white); rect(370,35,12,38,white); rect(316,61,66,12,white);
-  // Small two-line wordmark represented by clean bars until the full UI font is added.
-  rect(230,116,180,5,gray);
-  rect(210,137,220,5,gray);
+  // Left aligned AEP, with Racing / Development to its right.
+  text5(24,48,"AEP",10,white);
+  text5(230,48,"Racing",4,white);
+  text5(230,88,"Development",3,gray);
   while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
   present();
   while(transfer_num>0 && lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
@@ -336,11 +347,11 @@ void loop(){
     Serial.printf("TOUCH I2C=%d INT=%d\\n",err,digitalRead(TOUCH_INT));
   }
   if(down&&!touchDown) Serial.printf("TOUCH DOWN x=%d y=%d\\n",x,y);
-  if(down&&!touchDown&&y>=150 && raceboxCount>4){
+  if(connState!=CONN_OK && down&&!touchDown&&y>=150 && raceboxCount>4){
     listPage=(listPage+1)%((raceboxCount+3)/4);
     while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
     drawRaceBoxList();
-  } else if(down&&!touchDown&&x>=12&&x<628&&y>=46&&y<145){
+  } else if(connState!=CONN_OK && down&&!touchDown&&x>=12&&x<628&&y>=46&&y<145){
     int row=(y-46)/31;
     int idx=listPage*4+row;
     if(idx>=0&&idx<raceboxCount){
