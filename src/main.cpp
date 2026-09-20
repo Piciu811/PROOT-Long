@@ -121,7 +121,7 @@ static uint16_t lapCount=0;
 static bool lapClockRunning=false;
 // Custom start/finish: long-press dashboard to arm a line at the current GNSS point. Build trigger 2026-09-20.
 // The line is perpendicular to the vehicle heading estimated from consecutive GNSS fixes.
-static bool customLineValid=false, customLineArmed=false, havePrevFix=false;
+static bool customLineValid=false, customLineArmed=false, customDirectionPending=false, havePrevFix=false;
 static double customLat=0,customLon=0,customDirX=0,customDirY=0,prevLat=0,prevLon=0;
 static uint32_t customSavedAt=0,lastCrossTow=0;
 static uint8_t rbStream[512];
@@ -266,20 +266,34 @@ static double localY(double lat){ return lat*110540.0; }
 static void saveCustomLine(){
   double lat,lon; uint8_t fix; float speed;
   portENTER_CRITICAL(&rbDataMux); lat=rbLat; lon=rbLon; fix=rbFix; speed=rbSpeedKmh; portEXIT_CRITICAL(&rbDataMux);
-  if(fix<2 || speed<3.0f || !havePrevFix) return;
-  double dx=localX(lon,lat)-localX(prevLon,lat), dy=localY(lat)-localY(prevLat);
-  double n=sqrt(dx*dx+dy*dy); if(n<0.20) return;
-  customLat=lat; customLon=lon; customDirX=dx/n; customDirY=dy/n; customLineValid=true; customLineArmed=false;
-  lapClockRunning=false; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false; lastCrossTow=0; customSavedAt=millis();
+  if(fix<2) return;
+  customLat=lat; customLon=lon; customLineValid=true; customLineArmed=false;
+  // If moving, derive direction immediately. If stationary, learn it after moving ~3 m.
+  customDirectionPending=true;
+  if(havePrevFix && speed>=3.0f){
+    double dx=localX(lon,lat)-localX(prevLon,lat), dy=localY(lat)-localY(prevLat);
+    double n=sqrt(dx*dx+dy*dy);
+    if(n>=0.20){ customDirX=dx/n; customDirY=dy/n; customDirectionPending=false; }
+  }
+  lapStartTow=rbTowMs; lapClockRunning=true; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false; lastCrossTow=0; customSavedAt=millis();
   prefs.begin("proot",false); prefs.putDouble("sfLat",customLat); prefs.putDouble("sfLon",customLon);
   prefs.putDouble("sfDx",customDirX); prefs.putDouble("sfDy",customDirY); prefs.putBool("sfOk",true); prefs.end();
-  Serial.printf("CUSTOM SF %.7f %.7f dir %.3f %.3f\\n",customLat,customLon,customDirX,customDirY);
+  Serial.printf("CUSTOM SF SET %.7f %.7f pending=%d\\n",customLat,customLon,customDirectionPending);
 }
 static void updateLapClock(){
   double lat,lon; uint32_t tow; uint8_t fix; float speed;
   portENTER_CRITICAL(&rbDataMux); tow=rbTowMs; fix=rbFix; lat=rbLat; lon=rbLon; speed=rbSpeedKmh; portEXIT_CRITICAL(&rbDataMux);
   if(fix<2) return;
-  if(customLineValid && havePrevFix){
+  if(customLineValid && customDirectionPending){
+    double dx=localX(lon,customLat)-localX(customLon,customLat), dy=localY(lat)-localY(customLat);
+    double n=sqrt(dx*dx+dy*dy);
+    if(n>=3.0 && speed>=3.0f){
+      customDirX=dx/n; customDirY=dy/n; customDirectionPending=false;
+      prefs.begin("proot",false); prefs.putDouble("sfDx",customDirX); prefs.putDouble("sfDy",customDirY); prefs.end();
+      Serial.printf("CUSTOM SF DIRECTION %.3f %.3f\\n",customDirX,customDirY);
+    }
+  }
+  if(customLineValid && !customDirectionPending && havePrevFix){
     double x0=localX(customLon,customLat), y0=localY(customLat);
     double px=localX(prevLon,customLat)-x0, py=localY(prevLat)-y0;
     double cx=localX(lon,customLat)-x0, cy=localY(lat)-y0;
@@ -324,7 +338,11 @@ static void drawRaceBoxLive(){
     char d[16]; fmtDelta(lapDeltaMs,d,sizeof(d));
     num(250,130,d,4,lapDeltaMs<=0?green:red);
   }
-  if(customLineValid) rect(600,12,28,22,green);
+  // Explicit START/META button: red before setting, blue after successful setting.
+  uint16_t blue=C(0x001F);
+  rect(500,8,128,34,customLineValid?blue:red);
+  text5(510,15,"START",2,white);
+  text5(574,15,"META",2,white);
   if(lapLastMs){ char t[16]; fmtLap(lapLastMs,t,sizeof(t)); num(12,140,t,2,white); }
   if(lapBestMs){ char t[16]; fmtLap(lapBestMs,t,sizeof(t)); num(180,140,t,2,green); }
   if(lapCount) num(570,140,String(lapCount).c_str(),3,white);
@@ -490,18 +508,13 @@ void loop(){
   if(down&&!touchDown) Serial.printf("TOUCH DOWN x=%d y=%d\\n",x,y);
   // On the live dashboard a normal tap must not disconnect RaceBox.
   // Navigation/settings will get explicit touch zones later.
-  static uint32_t dashTouchSince=0; static bool dashLongDone=false;
-  if(connState==CONN_OK){
-    if(down && !touchDown){ dashTouchSince=millis(); dashLongDone=false; }
-    if(down && !dashLongDone && millis()-dashTouchSince>=1500){
-      saveCustomLine(); dashLongDone=true;
+  if(connState==CONN_OK && down&&!touchDown){
+    // Only the red/blue START META button is active on the dashboard.
+    if(x>=500 && x<640 && y>=0 && y<52){
+      saveCustomLine();
       while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
       drawRaceBoxLive();
     }
-    if(!down){ dashTouchSince=0; dashLongDone=false; }
-  }
-  if(connState==CONN_OK && down&&!touchDown){
-    // short tap is intentionally a no-op; hold 1.5 s to save custom S/F.
   } else if(connState!=CONN_OK && down&&!touchDown&&y>=150 && raceboxCount>4){
     listPage=(listPage+1)%((raceboxCount+3)/4);
     while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
