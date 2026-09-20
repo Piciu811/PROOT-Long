@@ -51,8 +51,19 @@ static void glyph(int x,int y,int id,int s,uint16_t col){
   for(int cx=0;cx<5;cx++) for(int cy=0;cy<7;cy++) if(DIG[id][cx]&(1<<cy)) rect(x+cx*s,y+cy*s,s,s,col);
 }
 static void num(int x,int y,const char*t,int s,uint16_t col){
-  while(*t){ int id=-1; if(*t>='0'&&*t<='9')id=*t-'0'; else if(*t==':')id=10; else if(*t=='.')id=11;
-    if(id>=0)glyph(x,y,id,s,col); x+=6*s; t++; }
+  while(*t){
+    int id=-1;
+    if(*t>='0'&&*t<='9') id=*t-'0';
+    else if(*t==':') id=10;
+    else if(*t=='.') id=11;
+    if(id>=0) glyph(x,y,id,s,col);
+    else if(*t=='+' || *t=='-'){
+      // Delta sign is drawn explicitly; DIG contains only digits, ':' and '.'.
+      rect(x,y+3*s,5*s,s,col);
+      if(*t=='+') rect(x+2*s,y+s,s,5*s,col);
+    }
+    x+=6*s; t++;
+  }
 }
 static void numTallBold(int x,int y,const char*t,int sx,int sy,uint16_t col){
   while(*t){ int id=-1; if(*t>='0'&&*t<='9')id=*t-'0'; else if(*t==':')id=10; else if(*t=='.')id=11;
