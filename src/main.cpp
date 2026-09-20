@@ -52,6 +52,15 @@ static void num(int x,int y,const char*t,int s,uint16_t col){
   while(*t){ int id=-1; if(*t>='0'&&*t<='9')id=*t-'0'; else if(*t==':')id=10; else if(*t=='.')id=11;
     if(id>=0)glyph(x,y,id,s,col); x+=6*s; t++; }
 }
+static void numTallBold(int x,int y,const char*t,int sx,int sy,uint16_t col){
+  while(*t){ int id=-1; if(*t>='0'&&*t<='9')id=*t-'0'; else if(*t==':')id=10; else if(*t=='.')id=11;
+    if(id>=0){
+      for(int cx=0;cx<5;cx++) for(int cy=0;cy<7;cy++) if(DIG[id][cx]&(1<<cy))
+        rect(x+cx*sx,y+cy*sy,sx+1,sy,col);
+    }
+    x+=6*sx; t++;
+  }
+}
 static const uint8_t ALPHA[26][5]={
  {0x7E,0x11,0x11,0x11,0x7E},{0x7F,0x49,0x49,0x49,0x36},{0x3E,0x41,0x41,0x41,0x22},{0x7F,0x41,0x41,0x22,0x1C},
  {0x7F,0x49,0x49,0x49,0x41},{0x7F,0x09,0x09,0x09,0x01},{0x3E,0x41,0x49,0x49,0x7A},{0x7F,0x08,0x08,0x08,0x7F},
@@ -359,21 +368,20 @@ static void drawRaceBoxLive(){
   speed=rbSpeedKmh; fix=rbFix; sats=rbSats; packets=rbLivePackets; valid=rbLiveValid; tow=rbTowMs;
   portEXIT_CRITICAL(&rbDataMux);
   for(size_t i=0;i<180u*640u;i++)screen[i]=black;
-  rect(0,0,640,4,green);
-  // Top-left status tiles removed for a cleaner timing view.
+  // Top status line removed for a cleaner timing view.
   char lap[16]; uint32_t elapsed=(lapClockRunning && tow>=lapStartTow)?tow-lapStartTow:0;
   fmtLap(elapsed,lap,sizeof(lap));
   // Current lap: centered vertically on the left and as large as practical.
-  num(8,58,lap,6,white);
+  numTallBold(8,48,lap,6,9,white);
   // Right side fills the available height with equal top/bottom/inter-row spacing.
   // Always draw zero values until real timing data exists.
   char lt[16],bt[16],dt[16];
   fmtLap(lapLastMs,lt,sizeof(lt));
   fmtLap(lapBestMs,bt,sizeof(bt));
   if(lapDeltaValid) fmtDelta(lapDeltaMs,dt,sizeof(dt)); else snprintf(dt,sizeof(dt),"00:00.000");
-  text5(326,8,"L",3,white);  num(366,2,lt,4,white);
-  text5(326,66,"B",3,green); num(366,60,bt,4,green);
-  text5(326,124,"D",3,white); num(366,118,dt,4,lapDeltaValid?(lapDeltaMs<=0?green:red):white);
+  text5(378,8,"L",3,white);  num(418,2,lt,4,white);
+  text5(378,66,"B",3,green); num(418,60,bt,4,green);
+  text5(378,124,"D",3,white); num(418,118,dt,4,lapDeltaValid?(lapDeltaMs<=0?green:red):white);
   // Small dark-gray controls at bottom-left.
   uint16_t darkgray=C(0x2104);
   rect(12,151,72,24,darkgray);
