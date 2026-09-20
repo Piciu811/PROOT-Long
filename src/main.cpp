@@ -230,7 +230,6 @@ void setup(){
   rect(0,0,640,180,black);
   rect(0,0,640,4,green);
   rect(12,68,616,44,gray);
-  num(292,76,"10",4,white);
   while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
   present();
   while(transfer_num>0 && lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
@@ -285,9 +284,7 @@ void loop(){
       // Connection runs on a separate FreeRTOS task, so touch/display stay responsive.
       rbConnected=false;
       startRaceBoxConnect(idx);
-      // Do not overwrite framebuffer while its previous DMA transfer is still queued.
-      while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
-      drawRaceBoxList();
+      // Do not draw here. loop() redraws exactly once when connState changes.
     }
   }
   touchDown=down;
