@@ -306,8 +306,8 @@ static void updateLapClock(){
     // Signed distance along travel direction; crossing zero means crossing the perpendicular S/F line.
     double prevAlong=px*customDirX+py*customDirY, curAlong=cx*customDirX+cy*customDirY;
     double lateral=fabs(cx*(-customDirY)+cy*customDirX);
-    if(curAlong < -8.0) customLineArmed=true;
-    if(customLineArmed && prevAlong<=0.0 && curAlong>0.0 && lateral<25.0 && speed>5.0f && (lastCrossTow==0 || tow-lastCrossTow>10000u)){
+    if(curAlong < -5.0) customLineArmed=true;
+    if(customLineArmed && prevAlong<=0.0 && curAlong>0.0 && lateral<50.0 && speed>5.0f && (lastCrossTow==0 || tow-lastCrossTow>10000u)){
       lastCrossTow=tow; customLineArmed=false;
       if(lapClockRunning){
         uint32_t lap=tow-lapStartTow;
@@ -360,25 +360,24 @@ static void drawRaceBoxLive(){
   portEXIT_CRITICAL(&rbDataMux);
   for(size_t i=0;i<180u*640u;i++)screen[i]=black;
   rect(0,0,640,4,green);
-  rect(12,12,120,22,rbConnected?green:red);
-  rect(148,12,120,22,valid?green:gray);
+  // Top-left status tiles removed for a cleaner timing view.
   char lap[16]; uint32_t elapsed=(lapClockRunning && tow>=lapStartTow)?tow-lapStartTow:0;
   fmtLap(elapsed,lap,sizeof(lap));
-  num(22,58,lap,6,white);
-  // SAT is only a status lamp: green when at least one satellite is visible.
-  text5(12,12,"SAT",3,sats>0?green:red);
-  // Explicit START/META button: red before setting, blue after successful setting.
+  // Main current lap remains large on the left.
+  num(12,12,lap,5,white);
+  // Maximum-size timing readouts on the right.
+  text5(340,10,"LAST",2,white);
+  if(lapLastMs){ char t[16]; fmtLap(lapLastMs,t,sizeof(t)); num(420,6,t,3,white); }
+  text5(340,60,"BEST",2,green);
+  if(lapBestMs){ char t[16]; fmtLap(lapBestMs,t,sizeof(t)); num(420,56,t,3,green); }
+  text5(340,110,"DELTA",2,white);
+  if(lapDeltaValid){ char dt[16]; fmtDelta(lapDeltaMs,dt,sizeof(dt)); num(440,106,dt,3,lapDeltaMs<=0?green:red); }
+  // Bottom-left START/META button, with SAT status tile directly beside it.
   uint16_t blue=C(0x001F);
-  rect(500,8,128,34,customLineValid?blue:red);
-  text5(510,15,"START",2,white);
-  text5(574,15,"META",2,white);
-  // Right column: LAST, BEST and continuously updated spatial DELTA.
-  text5(390,50,"LAST",2,white);
-  if(lapLastMs){ char t[16]; fmtLap(lapLastMs,t,sizeof(t)); num(470,48,t,2,white); }
-  text5(390,86,"BEST",2,green);
-  if(lapBestMs){ char t[16]; fmtLap(lapBestMs,t,sizeof(t)); num(470,84,t,2,green); }
-  text5(390,122,"DELTA",2,white);
-  if(lapDeltaValid){ char dt[16]; fmtDelta(lapDeltaMs,dt,sizeof(dt)); num(500,120,dt,2,lapDeltaMs<=0?green:red); }
+  rect(12,140,150,34,customLineValid?blue:red);
+  text5(22,147,"START",2,white); text5(86,147,"META",2,white);
+  rect(174,140,72,34,sats>0?green:red);
+  text5(187,147,"SAT",2,white);
   // Packet counter kept internally; do not show it on the normal dashboard.
   present();
 }
@@ -543,7 +542,7 @@ void loop(){
   // Navigation/settings will get explicit touch zones later.
   if(connState==CONN_OK && down&&!touchDown){
     // Only the red/blue START META button is active on the dashboard.
-    if(x>=500 && x<640 && y>=0 && y<52){
+    if(x>=12 && x<162 && y>=136 && y<180){
       saveCustomLine();
       while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
       drawRaceBoxLive();
