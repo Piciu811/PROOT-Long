@@ -375,18 +375,17 @@ static void drawRaceBoxLive(){
   // Top status line removed for a cleaner timing view.
   char lap[16]; uint32_t elapsed=(lapClockRunning && tow>=lapStartTow)?tow-lapStartTow:0;
   fmtLap(elapsed,lap,sizeof(lap));
-  // Current lap. After crossing S/F, flash the completed lap time three times.
-  bool flashActive=lapFlashStarted && millis()-lapFlashStarted<3000u;
-  bool flashShow=!flashActive || (((millis()-lapFlashStarted)/500u)%2u==0u);
+  // After crossing S/F, hold the completed lap time for five seconds.
+  bool flashActive=lapFlashStarted && millis()-lapFlashStarted<5000u;
   char mainTime[16];
   if(flashActive) fmtLap(lapLastMs,mainTime,sizeof(mainTime)); else snprintf(mainTime,sizeof(mainTime),"%s",lap);
-  if(flashShow) numTallBold(6,48,mainTime,5,9,white);
+  numTallBold(6,48,mainTime,5,9,white);
 
   // LAP label sits directly below the millisecond end of the main time.
   // The two-digit count fills the lower gap before D without touching either area.
   char lapNo[3]; snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));
-  text5(246,116,"LAP",2,yellow);
-  numTallBold(294,122,lapNo,7,7,yellow);
+  text5(302,116,"LAP",2,yellow);
+  numTallBold(278,122,lapNo,7,7,yellow);
   // Right side fills the available height with equal top/bottom/inter-row spacing.
   // Always draw zero values until real timing data exists.
   char lt[16],bt[16],dt[16];
