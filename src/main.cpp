@@ -382,11 +382,11 @@ static void drawRaceBoxLive(){
   if(flashActive) fmtLap(lapLastMs,mainTime,sizeof(mainTime)); else snprintf(mainTime,sizeof(mainTime),"%s",lap);
   if(flashShow) numTallBold(6,48,mainTime,5,9,white);
 
-  // Large two-digit completed lap counter at the bottom of the center gutter.
-  // Keep it clear of the main time, right-side L/B/D and bottom-left controls.
+  // LAP label sits directly below the millisecond end of the main time.
+  // The two-digit count fills the lower gap before D without touching either area.
   char lapNo[3]; snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));
-  text5(284,142,"LAP",2,yellow);
-  num(326,137,lapNo,5,yellow);
+  text5(246,116,"LAP",2,yellow);
+  numTallBold(294,122,lapNo,7,7,yellow);
   // Right side fills the available height with equal top/bottom/inter-row spacing.
   // Always draw zero values until real timing data exists.
   char lt[16],bt[16],dt[16];
