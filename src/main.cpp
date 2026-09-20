@@ -113,6 +113,9 @@ static float rbSpeedKmh=0;
 static double rbLat=0,rbLon=0;
 static uint32_t rbTowMs=0;
 static uint8_t rbFix=0,rbSats=0;
+static uint32_t lapStartTow=0, lapLastMs=0, lapBestMs=0;
+static uint16_t lapCount=0;
+static bool lapClockRunning=false;
 static uint8_t rbStream[512];
 static size_t rbStreamLen=0;
 static NimBLERemoteCharacteristic *rbTx=nullptr,*rbRx=nullptr;
@@ -240,18 +243,30 @@ static int autoFindRaceBox(){
   }
   return -1;
 }
+static void fmtLap(uint32_t ms,char *out,size_t n){
+  uint32_t min=ms/60000u; ms%=60000u;
+  uint32_t sec=ms/1000u, tenth=(ms%1000u)/100u;
+  snprintf(out,n,"%02lu:%02lu.%01lu",(unsigned long)min,(unsigned long)sec,(unsigned long)tenth);
+}
+static void updateLapClock(){
+  uint32_t tow; uint8_t fix;
+  portENTER_CRITICAL(&rbDataMux); tow=rbTowMs; fix=rbFix; portEXIT_CRITICAL(&rbDataMux);
+  if(fix>=2 && !lapClockRunning){ lapStartTow=tow; lapClockRunning=true; }
+}
+
 static void drawRaceBoxLive(){
   uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800);
-  float speed; uint8_t fix,sats; uint32_t packets; bool valid;
+  float speed; uint8_t fix,sats; uint32_t packets,tow; bool valid;
   portENTER_CRITICAL(&rbDataMux);
-  speed=rbSpeedKmh; fix=rbFix; sats=rbSats; packets=rbLivePackets; valid=rbLiveValid;
+  speed=rbSpeedKmh; fix=rbFix; sats=rbSats; packets=rbLivePackets; valid=rbLiveValid; tow=rbTowMs;
   portEXIT_CRITICAL(&rbDataMux);
   for(size_t i=0;i<180u*640u;i++)screen[i]=black;
   rect(0,0,640,4,green);
   rect(12,12,120,22,rbConnected?green:red);
   rect(148,12,120,22,valid?green:gray);
-  char sp[16]; snprintf(sp,sizeof(sp),"%03d",(int)(speed+0.5f));
-  num(22,58,sp,10,white);
+  char lap[16]; uint32_t elapsed=(lapClockRunning && tow>=lapStartTow)?tow-lapStartTow:0;
+  fmtLap(elapsed,lap,sizeof(lap));
+  num(22,58,lap,6,white);
   num(360,58,String(sats).c_str(),7,green);
   num(500,58,String(fix).c_str(),7,fix>=2?green:red);
   // Packet counter kept internally; do not show it on the normal dashboard.
@@ -368,6 +383,7 @@ void setup(){
 void loop(){
   if(transfer_num<=1&&lcd_PushColors_len>0)lcd_PushColors(0,0,0,0,NULL);
   processRaceBoxStream();
+  updateLapClock();
   if(connState!=drawnConnState){
     drawnConnState=connState;
     if(connState==CONN_OK && connIndex>=0){
