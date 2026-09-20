@@ -202,11 +202,15 @@ void setup(){
   uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800);
   for(size_t i=0;i<n;i++)screen[i]=black;
 
-  // Scan screen: do not draw the old 123.4 dashboard behind the BLE list.
+  // Show an intentional scan screen while the 10 s BLE scan is running.
+  // This replaces the unexplained blank area seen during startup.
   rect(0,0,640,180,black);
   rect(0,0,640,4,green);
+  rect(12,68,616,44,gray);
+  num(292,76,"10",4,white);
   present();
-  Serial.println("BLE SCAN SCREEN");
+  while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+  Serial.println("BLE SCANNING");
   prefs.begin("proot",true); savedRbAddr=prefs.getString("rbAddr",""); prefs.end();
   scanRaceBoxes();
   // PRÖÖT-style behavior: prefer the previously selected RaceBox address.
