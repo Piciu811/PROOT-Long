@@ -208,8 +208,9 @@ void setup(){
   rect(0,0,640,4,green);
   rect(12,68,616,44,gray);
   num(292,76,"10",4,white);
-  present();
   while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+  present();
+  while(transfer_num>0 && lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
   Serial.println("BLE SCANNING");
   prefs.begin("proot",true); savedRbAddr=prefs.getString("rbAddr",""); prefs.end();
   scanRaceBoxes();
