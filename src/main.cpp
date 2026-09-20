@@ -124,6 +124,11 @@ static bool lapClockRunning=false;
 static bool customLineValid=false, customLineArmed=false, customDirectionPending=false, havePrevFix=false;
 static double customLat=0,customLon=0,customDirX=0,customDirY=0,prevLat=0,prevLon=0;
 static uint32_t customSavedAt=0,lastCrossTow=0;
+struct LapPoint { float x,y; uint32_t t; };
+static const uint16_t LAP_TRACE_MAX=2400;
+static LapPoint refTrace[LAP_TRACE_MAX], curTrace[LAP_TRACE_MAX];
+static uint16_t refTraceN=0,curTraceN=0,refCursor=0;
+static uint32_t lastTraceTow=0;
 static uint8_t rbStream[512];
 static size_t rbStreamLen=0;
 static NimBLERemoteCharacteristic *rbTx=nullptr,*rbRx=nullptr;
@@ -275,7 +280,8 @@ static void saveCustomLine(){
     double n=sqrt(dx*dx+dy*dy);
     if(n>=0.20){ customDirX=dx/n; customDirY=dy/n; customDirectionPending=false; }
   }
-  lapStartTow=rbTowMs; lapClockRunning=true; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false; lastCrossTow=0; customSavedAt=millis();
+  lapStartTow=rbTowMs; lapClockRunning=true; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false; lastCrossTow=0;
+  refTraceN=curTraceN=refCursor=0; lastTraceTow=0; customSavedAt=millis();
   prefs.begin("proot",false); prefs.putDouble("sfLat",customLat); prefs.putDouble("sfLon",customLon);
   prefs.putDouble("sfDx",customDirX); prefs.putDouble("sfDy",customDirY); prefs.putBool("sfOk",true); prefs.end();
   Serial.printf("CUSTOM SF SET %.7f %.7f pending=%d\\n",customLat,customLon,customDirectionPending);
@@ -305,15 +311,42 @@ static void updateLapClock(){
       lastCrossTow=tow; customLineArmed=false;
       if(lapClockRunning){
         uint32_t lap=tow-lapStartTow;
-        if(lap>10000u){ lapLastMs=lap; if(!lapBestMs || lap<lapBestMs) lapBestMs=lap; lapCount++; }
+        if(lap>10000u){
+          lapLastMs=lap; lapCount++;
+          // The fastest completed lap becomes the spatial reference for live delta.
+          if(!lapBestMs || lap<lapBestMs){
+            lapBestMs=lap;
+            refTraceN=curTraceN;
+            for(uint16_t i=0;i<refTraceN;i++) refTrace[i]=curTrace[i];
+          }
+        }
       }
-      lapStartTow=tow; lapClockRunning=true; lapDeltaValid=false;
+      lapStartTow=tow; lapClockRunning=true; curTraceN=0; refCursor=0; lastTraceTow=0; lapDeltaValid=false;
       Serial.printf("LAP CROSS #%u last=%lu best=%lu\\n",lapCount,(unsigned long)lapLastMs,(unsigned long)lapBestMs);
     }
-    if(lapClockRunning && lapLastMs){
+    if(lapClockRunning){
       uint32_t elapsed=tow-lapStartTow;
-      lapDeltaMs=(int32_t)elapsed-(int32_t)lapLastMs;
-      lapDeltaValid=true;
+      double x0=localX(customLon,customLat), y0=localY(customLat);
+      float tx=(float)(localX(lon,customLat)-x0), ty=(float)(localY(lat)-y0);
+      // Store current lap at 10 Hz: up to four minutes per reference lap.
+      if(curTraceN<LAP_TRACE_MAX && (!lastTraceTow || tow-lastTraceTow>=100u)){
+        curTrace[curTraceN++]={tx,ty,elapsed}; lastTraceTow=tow;
+      }
+      // Live delta is current elapsed time minus reference time at the same track position.
+      if(refTraceN>2){
+        uint16_t lo=refCursor>12?refCursor-12:0;
+        uint16_t hi=(uint16_t)min((int)refTraceN-1,(int)refCursor+40);
+        float bestD=1e30f; uint16_t bi=refCursor;
+        for(uint16_t i=lo;i<=hi;i++){
+          float dx=tx-refTrace[i].x, dy=ty-refTrace[i].y, d=dx*dx+dy*dy;
+          if(d<bestD){ bestD=d; bi=i; }
+        }
+        refCursor=bi;
+        if(bestD<2500.0f){
+          lapDeltaMs=(int32_t)elapsed-(int32_t)refTrace[bi].t;
+          lapDeltaValid=true;
+        }
+      }
     }
   }
   prevLat=lat; prevLon=lon; havePrevFix=true;
@@ -332,20 +365,20 @@ static void drawRaceBoxLive(){
   char lap[16]; uint32_t elapsed=(lapClockRunning && tow>=lapStartTow)?tow-lapStartTow:0;
   fmtLap(elapsed,lap,sizeof(lap));
   num(22,58,lap,6,white);
-  num(360,58,String(sats).c_str(),7,green);
-  num(500,58,String(fix).c_str(),7,fix>=2?green:red);
-  if(lapDeltaValid){
-    char d[16]; fmtDelta(lapDeltaMs,d,sizeof(d));
-    num(250,130,d,4,lapDeltaMs<=0?green:red);
-  }
+  // SAT is only a status lamp: green when at least one satellite is visible.
+  text5(12,12,"SAT",3,sats>0?green:red);
   // Explicit START/META button: red before setting, blue after successful setting.
   uint16_t blue=C(0x001F);
   rect(500,8,128,34,customLineValid?blue:red);
   text5(510,15,"START",2,white);
   text5(574,15,"META",2,white);
-  if(lapLastMs){ char t[16]; fmtLap(lapLastMs,t,sizeof(t)); num(12,140,t,2,white); }
-  if(lapBestMs){ char t[16]; fmtLap(lapBestMs,t,sizeof(t)); num(180,140,t,2,green); }
-  if(lapCount) num(570,140,String(lapCount).c_str(),3,white);
+  // Right column: LAST, BEST and continuously updated spatial DELTA.
+  text5(390,50,"LAST",2,white);
+  if(lapLastMs){ char t[16]; fmtLap(lapLastMs,t,sizeof(t)); num(470,48,t,2,white); }
+  text5(390,86,"BEST",2,green);
+  if(lapBestMs){ char t[16]; fmtLap(lapBestMs,t,sizeof(t)); num(470,84,t,2,green); }
+  text5(390,122,"DELTA",2,white);
+  if(lapDeltaValid){ char dt[16]; fmtDelta(lapDeltaMs,dt,sizeof(dt)); num(500,120,dt,2,lapDeltaMs<=0?green:red); }
   // Packet counter kept internally; do not show it on the normal dashboard.
   present();
 }
