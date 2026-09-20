@@ -379,9 +379,9 @@ static void drawRaceBoxLive(){
   fmtLap(lapLastMs,lt,sizeof(lt));
   fmtLap(lapBestMs,bt,sizeof(bt));
   if(lapDeltaValid) fmtDelta(lapDeltaMs,dt,sizeof(dt)); else snprintf(dt,sizeof(dt),"00:00.000");
-  text5(386,13,"L",3,white);  num(426,7,lt,4,white);
-  text5(386,69,"B",3,green); num(426,63,bt,4,green);
-  text5(386,125,"D",3,white); num(426,119,dt,4,lapDeltaValid?(lapDeltaMs<=0?green:red):white);
+  text5(382,13,"L",3,white);  num(422,7,lt,4,white);
+  text5(382,69,"B",3,green); num(422,63,bt,4,green);
+  text5(382,125,"D",3,white); num(422,119,dt,4,lapDeltaValid?(lapDeltaMs<=0?green:red):white);
   // Small dark-gray controls at bottom-left.
   uint16_t darkgray=C(0x2104);
   rect(12,151,72,24,darkgray);
