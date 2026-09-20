@@ -104,15 +104,14 @@ static volatile ConnectState connState=CONN_IDLE;
 static volatile int connIndex=-1;
 static ConnectState drawnConnState=CONN_IDLE;
 
+static volatile uint32_t rbLastRxMs=0;
 static void rbNotify(NimBLERemoteCharacteristic*, uint8_t*, size_t len, bool){
-  // Isolation build: do not parse/copy RaceBox stream yet. Prove the BLE link
-  // remains stable while 25 Hz notifications are arriving.
-  rbLivePackets++;
-  rbLiveValid = len > 0;
+  // Keep callback minimal: no framebuffer, no UBX parser, no memcpy.
+  if(len){ rbLivePackets++; rbLiveValid=true; rbLastRxMs=millis(); }
 }
 
 static void processRaceBoxStream(){
-  // intentionally empty in isolation build
+  // intentionally empty: parsing will be reintroduced only after link/UI stability
 }
 
 static bool probeRaceBoxIndex(int idx){
@@ -323,6 +322,14 @@ void loop(){
     }
     while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
     drawRaceBoxList();
+  }
+  // Stable transition to the timing/dashboard page: draw only once, from loop(),
+  // after the BLE connection is confirmed. Do not redraw at RaceBox notification rate.
+  static bool timingShown=false;
+  if(connState==CONN_OK && rbConnected && !timingShown){
+    while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+    drawRaceBoxLive();
+    timingShown=true;
   }
   int x,y; bool down=readTouch(x,y);
   static uint32_t lastDiag=0;
