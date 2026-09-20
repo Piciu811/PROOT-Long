@@ -364,7 +364,18 @@ void loop(){
     Serial.printf("TOUCH I2C=%d INT=%d\\n",err,digitalRead(TOUCH_INT));
   }
   if(down&&!touchDown) Serial.printf("TOUCH DOWN x=%d y=%d\\n",x,y);
-  if(connState!=CONN_OK && down&&!touchDown&&y>=150 && raceboxCount>4){
+  // Dashboard touch: return to selector instead of leaving touch disabled after connect.
+  if(connState==CONN_OK && down&&!touchDown){
+    connState=CONN_IDLE;
+    drawnConnState=CONN_IDLE;
+    rbConnected=false;
+    timingShown=false;
+    connOkSince=0;
+    if(rbClient && rbClient->isConnected()) rbClient->disconnect();
+    rbClient=nullptr; rbTx=nullptr; rbRx=nullptr;
+    while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+    drawRaceBoxList();
+  } else if(connState!=CONN_OK && down&&!touchDown&&y>=150 && raceboxCount>4){
     listPage=(listPage+1)%((raceboxCount+3)/4);
     while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
     drawRaceBoxList();
