@@ -130,6 +130,7 @@ static int32_t lapDeltaMs=0;
 static bool lapDeltaValid=false;
 static uint16_t lapCount=0;
 static bool lapClockRunning=false;
+static uint32_t lapFlashStarted=0;
 // Custom start/finish: long-press dashboard to arm a line at the current GNSS point. Build trigger 2026-09-20.
 // The line is perpendicular to the vehicle heading estimated from consecutive GNSS fixes.
 static bool customLineValid=false, customLineArmed=false, customDirectionPending=false, havePrevFix=false;
@@ -324,6 +325,7 @@ static void updateLapClock(){
         uint32_t lap=tow-lapStartTow;
         if(lap>10000u){
           lapLastMs=lap; lapCount++;
+          lapFlashStarted=millis();
           // The fastest completed lap becomes the spatial reference for live delta.
           if(!lapBestMs || lap<lapBestMs){
             lapBestMs=lap;
@@ -373,14 +375,23 @@ static void drawRaceBoxLive(){
   // Top status line removed for a cleaner timing view.
   char lap[16]; uint32_t elapsed=(lapClockRunning && tow>=lapStartTow)?tow-lapStartTow:0;
   fmtLap(elapsed,lap,sizeof(lap));
-  // Current lap: centered vertically on the left and as large as practical.
-  numTallBold(6,48,lap,5,9,white);
+  // Current lap. After crossing S/F, flash the completed lap time three times.
+  bool flashActive=lapFlashStarted && millis()-lapFlashStarted<3000u;
+  bool flashShow=!flashActive || (((millis()-lapFlashStarted)/500u)%2u==0u);
+  char mainTime[16];
+  if(flashActive) fmtLap(lapLastMs,mainTime,sizeof(mainTime)); else snprintf(mainTime,sizeof(mainTime),"%s",lap);
+  if(flashShow) numTallBold(6,48,mainTime,5,9,white);
+
+  // Two-digit completed lap counter in the center gutter.
+  char lapNo[3]; snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));
+  text5(296,46,"LAP",2,gray);
+  num(296,68,lapNo,5,white);
   // Right side fills the available height with equal top/bottom/inter-row spacing.
   // Always draw zero values until real timing data exists.
   char lt[16],bt[16],dt[16];
   fmtLap(lapLastMs,lt,sizeof(lt));
   fmtLap(lapBestMs,bt,sizeof(bt));
-  if(lapDeltaValid) fmtDelta(lapDeltaMs,dt,sizeof(dt)); else snprintf(dt,sizeof(dt),"00:00.000");
+  if(lapDeltaValid) fmtDelta(lapDeltaMs,dt,sizeof(dt)); else snprintf(dt,sizeof(dt),"+0.000");
   text5(382,13,"L",3,white);  num(422,7,lt,4,white);
   text5(382,69,"B",3,green); num(422,63,bt,4,green);
   text5(382,125,"D",3,white); num(422,119,dt,4,lapDeltaValid?(lapDeltaMs<=0?green:red):white);
