@@ -372,16 +372,16 @@ static void drawRaceBoxLive(){
   char lap[16]; uint32_t elapsed=(lapClockRunning && tow>=lapStartTow)?tow-lapStartTow:0;
   fmtLap(elapsed,lap,sizeof(lap));
   // Current lap: centered vertically on the left and as large as practical.
-  numTallBold(8,48,lap,6,9,white);
+  numTallBold(6,48,lap,5,9,white);
   // Right side fills the available height with equal top/bottom/inter-row spacing.
   // Always draw zero values until real timing data exists.
   char lt[16],bt[16],dt[16];
   fmtLap(lapLastMs,lt,sizeof(lt));
   fmtLap(lapBestMs,bt,sizeof(bt));
   if(lapDeltaValid) fmtDelta(lapDeltaMs,dt,sizeof(dt)); else snprintf(dt,sizeof(dt),"00:00.000");
-  text5(378,8,"L",3,white);  num(418,2,lt,4,white);
-  text5(378,66,"B",3,green); num(418,60,bt,4,green);
-  text5(378,124,"D",3,white); num(418,118,dt,4,lapDeltaValid?(lapDeltaMs<=0?green:red):white);
+  text5(386,13,"L",3,white);  num(426,7,lt,4,white);
+  text5(386,69,"B",3,green); num(426,63,bt,4,green);
+  text5(386,125,"D",3,white); num(426,119,dt,4,lapDeltaValid?(lapDeltaMs<=0?green:red):white);
   // Small dark-gray controls at bottom-left.
   uint16_t darkgray=C(0x2104);
   rect(12,151,72,24,darkgray);
