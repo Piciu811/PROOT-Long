@@ -92,6 +92,10 @@ static void saveRaceBox(const String &addr){
   savedRbAddr=addr;
 }
 static BLEClient *rbClient=nullptr;
+enum ConnectState : uint8_t { CONN_IDLE, CONN_WORKING, CONN_OK, CONN_FAIL };
+static volatile ConnectState connState=CONN_IDLE;
+static volatile int connIndex=-1;
+static ConnectState drawnConnState=CONN_IDLE;
 static bool probeRaceBoxAddress(const String &addr){
   BLEClient *client=BLEDevice::createClient();
   Serial.printf("PROBE %s...\\n",addr.c_str());
@@ -112,6 +116,19 @@ static bool probeRaceBoxAddress(const String &addr){
 static bool connectSelectedRaceBox(){
   if(selectedRacebox<0 || selectedRacebox>=raceboxCount) return false;
   return probeRaceBoxAddress(raceboxAddr[selectedRacebox]);
+}
+static void raceBoxConnectTask(void *){
+  int idx=connIndex;
+  bool ok=false;
+  if(idx>=0 && idx<raceboxCount) ok=probeRaceBoxAddress(raceboxAddr[idx]);
+  connState=ok?CONN_OK:CONN_FAIL;
+  vTaskDelete(NULL);
+}
+static void startRaceBoxConnect(int idx){
+  if(connState==CONN_WORKING) return;
+  connIndex=idx;
+  connState=CONN_WORKING;
+  xTaskCreatePinnedToCore(raceBoxConnectTask,"rb-connect",8192,nullptr,1,nullptr,0);
 }
 static int autoFindRaceBox(){
   // First try the address remembered by the original-style rbAddr preference.
@@ -161,7 +178,13 @@ static void drawRaceBoxList(){
     int i=first+row;
     if(i>=raceboxCount) break;
     int y=46+row*31;
-    rect(12,y,616,25,(rbConnected&&i==selectedRacebox)?green:gray);
+    uint16_t rowColor=gray;
+    if(i==selectedRacebox){
+      if(connState==CONN_WORKING) rowColor=C(0xFFE0);
+      else if(connState==CONN_OK && rbConnected) rowColor=green;
+      else if(connState==CONN_FAIL) rowColor=red;
+    }
+    rect(12,y,616,25,rowColor);
     num(22,y+3,String(i+1).c_str(),3,black);
     // RaceBox advertises a human-visible serial in its BLE name on supported models.
     // Show all decimal digits from the advertised name; fall back to BLE address suffix.
@@ -231,6 +254,15 @@ void setup(){
 }
 void loop(){
   if(transfer_num<=1&&lcd_PushColors_len>0)lcd_PushColors(0,0,0,0,NULL);
+  if(connState!=drawnConnState){
+    drawnConnState=connState;
+    if(connState==CONN_OK && connIndex>=0){
+      selectedRacebox=connIndex;
+      saveRaceBox(raceboxAddr[selectedRacebox]);
+    }
+    while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+    drawRaceBoxList();
+  }
   int x,y; bool down=readTouch(x,y);
   static uint32_t lastDiag=0;
   if(millis()-lastDiag>1000){
@@ -250,11 +282,9 @@ void loop(){
     if(idx>=0&&idx<raceboxCount){
       selectedRacebox=idx;
       Serial.printf("Selected BLE %d: %s %s\\n",idx+1,raceboxes[idx].c_str(),raceboxAddr[idx].c_str());
-      // Never call BLEClient::connect() from the touch/UI path: it can block for seconds.
-      // Persist selection immediately; connection will run from a separate state machine.
-      saveRaceBox(raceboxAddr[idx]);
-      int row=idx-listPage*4;
-      rect(12,46+row*31,616,25,C(0x07E0));
+      // Connection runs on a separate FreeRTOS task, so touch/display stay responsive.
+      rbConnected=false;
+      startRaceBoxConnect(idx);
       // Do not overwrite framebuffer while its previous DMA transfer is still queued.
       while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
       drawRaceBoxList();
