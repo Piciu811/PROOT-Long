@@ -110,6 +110,8 @@ static portMUX_TYPE rbDataMux=portMUX_INITIALIZER_UNLOCKED;
 static volatile bool rbLiveValid=false;
 static volatile uint32_t rbLivePackets=0;
 static float rbSpeedKmh=0;
+static double rbLat=0,rbLon=0;
+static uint32_t rbTowMs=0;
 static uint8_t rbFix=0,rbSats=0;
 static uint8_t rbStream[512];
 static size_t rbStreamLen=0;
@@ -152,8 +154,10 @@ static void processRaceBoxStream(){
     for(size_t i=2;i<6u+plen;i++){ a=(uint8_t)(a+fifo[i]); b=(uint8_t)(b+a); }
     if(a==fifo[6+plen] && b==fifo[7+plen] && fifo[2]==0xFF && fifo[3]==0x01 && plen>=80){
       const uint8_t *p=fifo+6;
-      uint32_t speedMm=0; memcpy(&speedMm,p+48,4);
+      uint32_t speedMm=0,tow=0; int32_t lonRaw=0,latRaw=0;
+      memcpy(&tow,p+0,4); memcpy(&lonRaw,p+24,4); memcpy(&latRaw,p+28,4); memcpy(&speedMm,p+48,4);
       portENTER_CRITICAL(&rbDataMux);
+      rbTowMs=tow; rbLon=(double)lonRaw/10000000.0; rbLat=(double)latRaw/10000000.0;
       rbFix=p[20]; rbSats=p[23]; rbSpeedKmh=(float)speedMm*0.0036f;
       rbLivePackets++; rbLiveValid=true;
       portEXIT_CRITICAL(&rbDataMux);
