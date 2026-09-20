@@ -365,13 +365,15 @@ static void drawRaceBoxLive(){
   fmtLap(elapsed,lap,sizeof(lap));
   // Current lap: centered vertically on the left and as large as practical.
   num(8,58,lap,6,white);
-  // Right side: single-letter labels leave maximum width for the times.
-  text5(338,8,"L",3,white);
-  if(lapLastMs){ char t[16]; fmtLap(lapLastMs,t,sizeof(t)); num(382,4,t,4,white); }
-  text5(338,62,"B",3,green);
-  if(lapBestMs){ char t[16]; fmtLap(lapBestMs,t,sizeof(t)); num(382,58,t,4,green); }
-  text5(338,116,"D",3,white);
-  if(lapDeltaValid){ char dt[16]; fmtDelta(lapDeltaMs,dt,sizeof(dt)); num(382,112,dt,4,lapDeltaMs<=0?green:red); }
+  // Right side fills the available height with equal top/bottom/inter-row spacing.
+  // Always draw zero values until real timing data exists.
+  char lt[16],bt[16],dt[16];
+  fmtLap(lapLastMs,lt,sizeof(lt));
+  fmtLap(lapBestMs,bt,sizeof(bt));
+  if(lapDeltaValid) fmtDelta(lapDeltaMs,dt,sizeof(dt)); else snprintf(dt,sizeof(dt),"00:00.000");
+  text5(326,8,"L",3,white);  num(366,2,lt,4,white);
+  text5(326,66,"B",3,green); num(366,60,bt,4,green);
+  text5(326,124,"D",3,white); num(366,118,dt,4,lapDeltaValid?(lapDeltaMs<=0?green:red):white);
   // Small dark-gray controls at bottom-left.
   uint16_t darkgray=C(0x2104);
   rect(12,151,72,24,darkgray);
