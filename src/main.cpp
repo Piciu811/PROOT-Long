@@ -105,36 +105,51 @@ static volatile int connIndex=-1;
 static ConnectState drawnConnState=CONN_IDLE;
 
 static void rbNotify(NimBLERemoteCharacteristic*, uint8_t *data, size_t len, bool){
-  // RaceBox live stream is UBX framed and BLE notifications may split/coalesce frames.
-  if(len>sizeof(rbStream)-rbStreamLen){
-    rbStreamLen=0;
-  }
-  if(len<=sizeof(rbStream)-rbStreamLen){
-    memcpy(rbStream+rbStreamLen,data,len); rbStreamLen+=len;
-  }
-  while(rbStreamLen>=8){
+  // BLE callback must stay very small. RaceBox can stream at 25 Hz and notifications
+  // may contain several UBX frames. For now only copy bytes into a protected FIFO;
+  // parsing is done from loop(), never inside the NimBLE callback task.
+  portENTER_CRITICAL(&rbDataMux);
+  size_t freeBytes=sizeof(rbStream)-rbStreamLen;
+  size_t take=len<freeBytes?len:freeBytes;
+  if(take){ memcpy(rbStream+rbStreamLen,data,take); rbStreamLen+=take; }
+  portEXIT_CRITICAL(&rbDataMux);
+}
+
+static void processRaceBoxStream(){
+  uint8_t local[512]; size_t n=0;
+  portENTER_CRITICAL(&rbDataMux);
+  n=rbStreamLen;
+  if(n){ memcpy(local,rbStream,n); rbStreamLen=0; }
+  portEXIT_CRITICAL(&rbDataMux);
+  if(!n) return;
+
+  static uint8_t fifo[1024];
+  static size_t fifoLen=0;
+  if(n>sizeof(fifo)-fifoLen){ fifoLen=0; }
+  if(n<=sizeof(fifo)-fifoLen){ memcpy(fifo+fifoLen,local,n); fifoLen+=n; }
+
+  while(fifoLen>=8){
     size_t sync=0;
-    while(sync+1<rbStreamLen && !(rbStream[sync]==0xB5 && rbStream[sync+1]==0x62)) sync++;
+    while(sync+1<fifoLen && !(fifo[sync]==0xB5 && fifo[sync+1]==0x62)) sync++;
     if(sync){
-      memmove(rbStream,rbStream+sync,rbStreamLen-sync); rbStreamLen-=sync;
-      if(rbStreamLen<8) break;
+      memmove(fifo,fifo+sync,fifoLen-sync); fifoLen-=sync;
+      if(fifoLen<8) break;
     }
-    uint16_t plen=(uint16_t)rbStream[4] | ((uint16_t)rbStream[5]<<8);
+    uint16_t plen=(uint16_t)fifo[4] | ((uint16_t)fifo[5]<<8);
     size_t frameLen=(size_t)plen+8;
-    if(frameLen>sizeof(rbStream)){ rbStreamLen=0; break; }
-    if(rbStreamLen<frameLen) break;
+    if(frameLen>sizeof(fifo)){ fifoLen=0; break; }
+    if(fifoLen<frameLen) break;
     uint8_t a=0,b=0;
-    for(size_t i=2;i<6u+plen;i++){ a=(uint8_t)(a+rbStream[i]); b=(uint8_t)(b+a); }
-    bool checksum=(a==rbStream[6+plen] && b==rbStream[7+plen]);
-    if(checksum && rbStream[2]==0xFF && rbStream[3]==0x01 && plen>=80){
-      const uint8_t *p=rbStream+6;
+    for(size_t i=2;i<6u+plen;i++){ a=(uint8_t)(a+fifo[i]); b=(uint8_t)(b+a); }
+    if(a==fifo[6+plen] && b==fifo[7+plen] && fifo[2]==0xFF && fifo[3]==0x01 && plen>=80){
+      const uint8_t *p=fifo+6;
       uint32_t speedMm=0; memcpy(&speedMm,p+48,4);
       portENTER_CRITICAL(&rbDataMux);
       rbFix=p[20]; rbSats=p[23]; rbSpeedKmh=speedMm*0.0036f;
       rbLivePackets++; rbLiveValid=true;
       portEXIT_CRITICAL(&rbDataMux);
     }
-    memmove(rbStream,rbStream+frameLen,rbStreamLen-frameLen); rbStreamLen-=frameLen;
+    memmove(fifo,fifo+frameLen,fifoLen-frameLen); fifoLen-=frameLen;
   }
 }
 
@@ -337,6 +352,7 @@ void setup(){
 }
 void loop(){
   if(transfer_num<=1&&lcd_PushColors_len>0)lcd_PushColors(0,0,0,0,NULL);
+  processRaceBoxStream();
   if(connState!=drawnConnState){
     drawnConnState=connState;
     if(connState==CONN_OK && connIndex>=0){
