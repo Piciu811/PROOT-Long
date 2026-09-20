@@ -406,7 +406,7 @@ static void drawRaceBoxLive(){
   // The two-digit count fills the lower gap before D without touching either area.
   char lapNo[3]; snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));
   text5(240,141,"LAP",2,yellow);
-  numTallBold(283,122,lapNo,7,7,yellow);
+  numTallBold(288,122,lapNo,7,7,yellow);
   // Large STOP button in the center gutter, between the main timer and right panel.
   uint16_t darkgray=C(0x2104);
   rect(287,0,80,80,darkgray);
@@ -539,6 +539,7 @@ void setup(){
   text5(24,48,"AEP",10,white);
   text5(230,48,"Racing",4,white);
   text5(230,88,"Development",3,gray);
+  text5(230,118,"Tel: +48 501766987",2,gray);
   while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
   present();
   while(transfer_num>0 && lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
@@ -633,7 +634,7 @@ void loop(){
     static uint32_t stopPressStarted=0;
     static bool stopLongDone=false;
     bool onStop=(x>=287 && x<367 && y>=0 && y<80);
-    if(down && !touchDown && onStop){ stopPressStarted=millis(); stopLongDone=false; }
+    if(down && !touchDown && onStop && !stopLongDone){ stopPressStarted=millis(); }
     if(down && stopPressStarted && !stopLongDone && millis()-stopPressStarted>=4000u){
       // Full reset: forget recorded laps and custom S/F, returning to the state before S/M.
       lapClockRunning=false; timingStopped=false; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false;
@@ -649,13 +650,14 @@ void loop(){
       while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
       drawRaceBoxLive();
     }
-    if(!down && touchDown && stopPressStarted){
-      if(!stopLongDone && millis()-stopPressStarted<4000u){
+    if(!down && touchDown){
+      if(stopPressStarted && !stopLongDone && millis()-stopPressStarted<4000u){
         timingStopped=true; lapClockRunning=false; lapDeltaValid=false; lapFlashStarted=0;
         while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
         drawRaceBoxLive();
       }
       stopPressStarted=0;
+      stopLongDone=false;
     }
     if(down && !touchDown && !onStop){
       if(x>=12 && x<84 && y>=148 && y<180){
