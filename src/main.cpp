@@ -5,6 +5,7 @@
 #include <Preferences.h>
 #include <Wire.h>
 #include <math.h>
+#include "tracks_europe.h"
 
 extern uint32_t transfer_num;
 extern size_t lcd_PushColors_len;
@@ -151,6 +152,9 @@ static bool timingStopped=false;
 static bool customLineValid=false, customLineArmed=false, customDirectionPending=false, havePrevFix=false;
 static double customLat=0,customLon=0,customDirX=0,customDirY=0,prevLat=0,prevLon=0;
 static uint32_t customSavedAt=0,lastCrossTow=0;
+static bool factoryTrackActive=false;
+static uint16_t factoryTrackId=0;
+static uint32_t lastTrackDetectMs=0;
 struct LapPoint { float x,y; uint32_t t; };
 static const uint16_t LAP_TRACE_MAX=2400;
 static LapPoint refTrace[LAP_TRACE_MAX], curTrace[LAP_TRACE_MAX];
@@ -295,10 +299,40 @@ static void fmtDelta(int32_t ms,char *out,size_t n){
 }
 static double localX(double lon,double lat0){ return lon*111320.0*cos(lat0*0.017453292519943295); }
 static double localY(double lat){ return lat*110540.0; }
+static void detectFactoryTrack(double lat,double lon){
+  if(customLineValid || factoryTrackActive || millis()-lastTrackDetectMs<2000u) return;
+  lastTrackDetectMs=millis();
+  double bestD2=10000.0*10000.0; int best=-1;
+  for(size_t i=0;i<PROOT_EUROPE_TRACK_COUNT;i++){
+    ProotTrackLine t; memcpy_P(&t,&PROOT_EUROPE_TRACKS[i],sizeof(t));
+    if(!t.enabled) continue;
+    double aLat=t.lat1*1e-7, aLon=t.lon1*1e-7, bLat=t.lat2*1e-7, bLon=t.lon2*1e-7;
+    double mLat=(aLat+bLat)*0.5, mLon=(aLon+bLon)*0.5;
+    double dx=(lon-mLon)*111320.0*cos(lat*0.017453292519943295), dy=(lat-mLat)*110540.0;
+    double d2=dx*dx+dy*dy;
+    if(d2<bestD2){bestD2=d2;best=(int)i;}
+  }
+  if(best<0) return;
+  ProotTrackLine t; memcpy_P(&t,&PROOT_EUROPE_TRACKS[best],sizeof(t));
+  double aLat=t.lat1*1e-7, aLon=t.lon1*1e-7, bLat=t.lat2*1e-7, bLon=t.lon2*1e-7;
+  customLat=(aLat+bLat)*0.5; customLon=(aLon+bLon)*0.5;
+  // Direction normal to the stored S/F segment. First real approach determines polarity.
+  double sx=localX(bLon,customLat)-localX(aLon,customLat), sy=localY(bLat)-localY(aLat);
+  double n=sqrt(sx*sx+sy*sy); if(n<0.5) return;
+  customDirX=-sy/n; customDirY=sx/n;
+  if(havePrevFix){
+    double vx=localX(lon,lat)-localX(prevLon,lat), vy=localY(lat)-localY(prevLat);
+    if(vx*customDirX+vy*customDirY<0){customDirX=-customDirX;customDirY=-customDirY;}
+  }
+  customLineValid=true; customDirectionPending=false; customLineArmed=false;
+  factoryTrackActive=true; factoryTrackId=t.id; lastCrossTow=0;
+  Serial.printf("AUTO TRACK id=%u distance=%.0fm\\n",(unsigned)factoryTrackId,sqrt(bestD2));
+}
 static void saveCustomLine(){
   double lat,lon; uint8_t fix; float speed;
   portENTER_CRITICAL(&rbDataMux); lat=rbLat; lon=rbLon; fix=rbFix; speed=rbSpeedKmh; portEXIT_CRITICAL(&rbDataMux);
   if(fix<2) return;
+  factoryTrackActive=false; factoryTrackId=0;
   customLat=lat; customLon=lon; customLineValid=true; customLineArmed=false;
   // If moving, derive direction immediately. If stationary, learn it after moving ~3 m.
   customDirectionPending=true;
@@ -318,6 +352,7 @@ static void updateLapClock(){
   double lat,lon; uint32_t tow; uint8_t fix; float speed;
   portENTER_CRITICAL(&rbDataMux); tow=rbTowMs; fix=rbFix; lat=rbLat; lon=rbLon; speed=rbSpeedKmh; portEXIT_CRITICAL(&rbDataMux);
   if(fix<2) return;
+  detectFactoryTrack(lat,lon);
   if(customLineValid && customDirectionPending){
     double dx=localX(lon,customLat)-localX(customLon,customLat), dy=localY(lat)-localY(customLat);
     double n=sqrt(dx*dx+dy*dy);
