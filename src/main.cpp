@@ -245,11 +245,11 @@ void loop(){
     if(idx>=0&&idx<raceboxCount){
       selectedRacebox=idx;
       Serial.printf("Selected BLE %d: %s %s\\n",idx+1,raceboxes[idx].c_str(),raceboxAddr[idx].c_str());
-      bool ok=connectSelectedRaceBox();
-      // Immediate visible result: green row = confirmed RaceBox, red marker = not RaceBox/connect failed.
+      // Never call BLEClient::connect() from the touch/UI path: it can block for seconds.
+      // Persist selection immediately; connection will run from a separate state machine.
+      saveRaceBox(raceboxAddr[idx]);
       int row=idx-listPage*4;
-      if(ok) rect(12,46+row*31,616,25,C(0x07E0));
-      else rect(600,46+row*31,28,25,C(0xF800));
+      rect(12,46+row*31,616,25,C(0x07E0));
       // Do not overwrite framebuffer while its previous DMA transfer is still queued.
       while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
       drawRaceBoxList();
