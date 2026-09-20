@@ -407,24 +407,34 @@ static void drawRaceBoxLive(){
   char lapNo[3]; snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));
   text5(240,141,"LAP",2,yellow);
   numTallBold(278,122,lapNo,7,7,yellow);
-  // Large center STOP button. Tap ends timing; hold for 4 s resets the session/SF.
+  // Large STOP button in the center gutter, between the main timer and right panel.
   uint16_t darkgray=C(0x2104);
-  rect(155,151,80,24,darkgray);
-  text5(167,156,"STOP",2,white);
+  rect(242,52,118,64,darkgray);
+  text5(263,72,"STOP",4,white);
 
-  // Right side: three numbered lap times. UP/DN scroll through groups of three.
-  int first=(int)lapHistoryPage*3;
-  for(int row=0;row<3;row++){
-    int idx=first+row, y=8+row*55;
-    if(idx>=lapHistoryN) break;
-    char no[4],tm[16]; snprintf(no,sizeof(no),"%02d",idx+1); fmtLap(lapHistory[idx],tm,sizeof(tm));
-    uint16_t lc=(lapHistory[idx] && lapHistory[idx]==lapBestMs)?green:white;
-    num(382,y,no,3,lc);
-    num(424,y,tm,3,lc);
-  }
-  if(lapHistoryN>3){
-    text5(602,8,"UP",1,gray);
-    text5(602,158,"DN",1,gray);
+  // Before STOP keep the normal L/B/D panel. After STOP show the lap-history view.
+  if(!timingStopped){
+    char lt[16],bt[16],dt[16];
+    fmtLap(lapLastMs,lt,sizeof(lt));
+    fmtLap(lapBestMs,bt,sizeof(bt));
+    if(lapDeltaValid) fmtDelta(lapDeltaMs,dt,sizeof(dt)); else snprintf(dt,sizeof(dt),"+0.000");
+    text5(382,13,"L",3,white);  num(422,7,lt,4,white);
+    text5(382,69,"B",3,green); num(422,63,bt,4,green);
+    text5(382,125,"D",3,white); num(422,119,dt,4,lapDeltaValid?(lapDeltaMs<=0?green:red):white);
+  } else {
+    int first=(int)lapHistoryPage*3;
+    for(int row=0;row<3;row++){
+      int idx=first+row, y=8+row*55;
+      if(idx>=lapHistoryN) break;
+      char no[4],tm[16]; snprintf(no,sizeof(no),"%02d",idx+1); fmtLap(lapHistory[idx],tm,sizeof(tm));
+      uint16_t lc=(lapHistory[idx] && lapHistory[idx]==lapBestMs)?green:white;
+      num(382,y,no,3,lc);
+      num(424,y,tm,3,lc);
+    }
+    if(lapHistoryN>3){
+      text5(602,8,"UP",1,gray);
+      text5(602,158,"DN",1,gray);
+    }
   }
   // Small dark-gray controls at bottom-left.
   rect(12,151,72,24,darkgray);
@@ -622,7 +632,7 @@ void loop(){
   } else if(connState==CONN_OK){
     static uint32_t stopPressStarted=0;
     static bool stopLongDone=false;
-    bool onStop=(x>=155 && x<235 && y>=148 && y<180);
+    bool onStop=(x>=242 && x<360 && y>=52 && y<116);
     if(down && !touchDown && onStop){ stopPressStarted=millis(); stopLongDone=false; }
     if(down && onStop && stopPressStarted && !stopLongDone && millis()-stopPressStarted>=4000u){
       // Full reset: forget recorded laps and custom S/F, returning to the state before S/M.
