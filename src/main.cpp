@@ -142,6 +142,10 @@ static bool lapDeltaValid=false;
 static uint16_t lapCount=0;
 static bool lapClockRunning=false;
 static uint32_t lapFlashStarted=0;
+static const uint8_t LAP_HISTORY_MAX=99;
+static uint32_t lapHistory[LAP_HISTORY_MAX]={0};
+static uint8_t lapHistoryN=0,lapHistoryPage=0;
+static bool timingStopped=false;
 // Custom start/finish: long-press dashboard to arm a line at the current GNSS point. Build trigger 2026-09-20.
 // The line is perpendicular to the vehicle heading estimated from consecutive GNSS fixes.
 static bool customLineValid=false, customLineArmed=false, customDirectionPending=false, havePrevFix=false;
@@ -304,6 +308,7 @@ static void saveCustomLine(){
     if(n>=0.20){ customDirX=dx/n; customDirY=dy/n; customDirectionPending=false; }
   }
   lapStartTow=rbTowMs; lapClockRunning=true; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false; lastCrossTow=0;
+  lapHistoryN=0; lapHistoryPage=0; timingStopped=false;
   refTraceN=curTraceN=refCursor=0; lastTraceTow=0; customSavedAt=millis();
   prefs.begin("proot",false); prefs.putDouble("sfLat",customLat); prefs.putDouble("sfLon",customLon);
   prefs.putDouble("sfDx",customDirX); prefs.putDouble("sfDy",customDirY); prefs.putBool("sfOk",true); prefs.end();
@@ -322,7 +327,7 @@ static void updateLapClock(){
       Serial.printf("CUSTOM SF DIRECTION %.3f %.3f\\n",customDirX,customDirY);
     }
   }
-  if(customLineValid && !customDirectionPending && havePrevFix){
+  if(customLineValid && !customDirectionPending && havePrevFix && !timingStopped){
     double x0=localX(customLon,customLat), y0=localY(customLat);
     double px=localX(prevLon,customLat)-x0, py=localY(prevLat)-y0;
     double cx=localX(lon,customLat)-x0, cy=localY(lat)-y0;
@@ -336,6 +341,8 @@ static void updateLapClock(){
         uint32_t lap=tow-lapStartTow;
         if(lap>10000u){
           lapLastMs=lap; lapCount++;
+          if(lapHistoryN<LAP_HISTORY_MAX) lapHistory[lapHistoryN++]=lap;
+          lapHistoryPage=(lapHistoryN?((lapHistoryN-1)/3):0);
           lapFlashStarted=millis();
           // The fastest completed lap becomes the spatial reference for live delta.
           if(!lapBestMs || lap<lapBestMs){
@@ -390,24 +397,34 @@ static void drawRaceBoxLive(){
   bool flashActive=lapFlashStarted && millis()-lapFlashStarted<5000u;
   char mainTime[16];
   if(flashActive) fmtLap(lapLastMs,mainTime,sizeof(mainTime)); else snprintf(mainTime,sizeof(mainTime),"%s",lap);
-  numTallBold(6,48,mainTime,5,9,white);
+  uint16_t mainCol=(flashActive && lapLastMs && lapLastMs==lapBestMs)?green:white;
+  numTallBold(6,48,mainTime,5,9,mainCol);
 
   // LAP label sits directly below the millisecond end of the main time.
   // The two-digit count fills the lower gap before D without touching either area.
   char lapNo[3]; snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));
   text5(240,141,"LAP",2,yellow);
   numTallBold(278,122,lapNo,7,7,yellow);
-  // Right side fills the available height with equal top/bottom/inter-row spacing.
-  // Always draw zero values until real timing data exists.
-  char lt[16],bt[16],dt[16];
-  fmtLap(lapLastMs,lt,sizeof(lt));
-  fmtLap(lapBestMs,bt,sizeof(bt));
-  if(lapDeltaValid) fmtDelta(lapDeltaMs,dt,sizeof(dt)); else snprintf(dt,sizeof(dt),"+0.000");
-  text5(382,13,"L",3,white);  num(422,7,lt,4,white);
-  text5(382,69,"B",3,green); num(422,63,bt,4,green);
-  text5(382,125,"D",3,white); num(422,119,dt,4,lapDeltaValid?(lapDeltaMs<=0?green:red):white);
-  // Small dark-gray controls at bottom-left.
+  // Large center STOP button. Tap ends timing; hold for 4 s resets the session/SF.
   uint16_t darkgray=C(0x2104);
+  rect(155,151,80,24,darkgray);
+  text5(167,156,"STOP",2,white);
+
+  // Right side: three numbered lap times. UP/DN scroll through groups of three.
+  int first=(int)lapHistoryPage*3;
+  for(int row=0;row<3;row++){
+    int idx=first+row, y=8+row*55;
+    if(idx>=lapHistoryN) break;
+    char no[4],tm[16]; snprintf(no,sizeof(no),"%02d",idx+1); fmtLap(lapHistory[idx],tm,sizeof(tm));
+    uint16_t lc=(lapHistory[idx] && lapHistory[idx]==lapBestMs)?green:white;
+    num(382,y,no,3,lc);
+    num(424,y,tm,3,lc);
+  }
+  if(lapHistoryN>3){
+    text5(602,8,"UP",1,gray);
+    text5(602,158,"DN",1,gray);
+  }
+  // Small dark-gray controls at bottom-left.
   rect(12,151,72,24,darkgray);
   text5(31,156,"S/M",2,customLineValid?blue:red);
   rect(90,151,58,24,darkgray);
@@ -600,12 +617,41 @@ void loop(){
       while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
       drawRaceBoxList();
     }
-  } else if(connState==CONN_OK && down&&!touchDown){
-    // Only the red/blue START META button is active on the dashboard.
-    if(x>=12 && x<84 && y>=148 && y<180){
-      saveCustomLine();
+  } else if(connState==CONN_OK){
+    static uint32_t stopPressStarted=0;
+    static bool stopLongDone=false;
+    bool onStop=(x>=155 && x<235 && y>=148 && y<180);
+    if(down && !touchDown && onStop){ stopPressStarted=millis(); stopLongDone=false; }
+    if(down && onStop && stopPressStarted && !stopLongDone && millis()-stopPressStarted>=4000u){
+      // Full reset: forget recorded laps and custom S/F, returning to the state before S/M.
+      lapClockRunning=false; timingStopped=false; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false;
+      lapHistoryN=0; lapHistoryPage=0; refTraceN=curTraceN=refCursor=0; lastTraceTow=0; lastCrossTow=0;
+      customLineValid=false; customLineArmed=false; customDirectionPending=false;
+      prefs.begin("proot",false); prefs.putBool("sfOk",false); prefs.end();
+      stopLongDone=true;
       while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
       drawRaceBoxLive();
+    }
+    if(!down && touchDown && stopPressStarted){
+      if(!stopLongDone && millis()-stopPressStarted<4000u){
+        timingStopped=true; lapClockRunning=false; lapDeltaValid=false;
+        while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+        drawRaceBoxLive();
+      }
+      stopPressStarted=0;
+    }
+    if(down && !touchDown && !onStop){
+      if(x>=12 && x<84 && y>=148 && y<180){
+        saveCustomLine();
+        while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+        drawRaceBoxLive();
+      } else if(x>=590 && y<60 && lapHistoryPage>0){
+        lapHistoryPage--;
+        while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); } drawRaceBoxLive();
+      } else if(x>=590 && y>=120 && lapHistoryN>(lapHistoryPage+1)*3){
+        lapHistoryPage++;
+        while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); } drawRaceBoxLive();
+      }
     }
   } else if(connState!=CONN_OK && down&&!touchDown&&x>=390&&x<580&&y>=12&&y<54){
     int pages=max(1,(raceboxCount+2)/3);
