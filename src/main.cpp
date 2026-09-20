@@ -250,7 +250,7 @@ static void drawRaceBoxLive(){
   num(22,58,sp,10,white);
   num(360,58,String(sats).c_str(),7,green);
   num(500,58,String(fix).c_str(),7,fix>=2?green:red);
-  num(500,130,String(packets%10000).c_str(),3,gray);
+  // Packet counter kept internally; do not show it on the normal dashboard.
   present();
 }
 static bool readTouch(int &lx,int &ly){
@@ -406,17 +406,10 @@ void loop(){
     Serial.printf("TOUCH I2C=%d INT=%d\\n",err,digitalRead(TOUCH_INT));
   }
   if(down&&!touchDown) Serial.printf("TOUCH DOWN x=%d y=%d\\n",x,y);
-  // Dashboard touch: return to selector instead of leaving touch disabled after connect.
+  // On the live dashboard a normal tap must not disconnect RaceBox.
+  // Navigation/settings will get explicit touch zones later.
   if(connState==CONN_OK && down&&!touchDown){
-    connState=CONN_IDLE;
-    drawnConnState=CONN_IDLE;
-    rbConnected=false;
-    timingShown=false;
-    connOkSince=0;
-    if(rbClient && rbClient->isConnected()) rbClient->disconnect();
-    rbClient=nullptr; rbTx=nullptr; rbRx=nullptr;
-    while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
-    drawRaceBoxList();
+    // no-op: keep RaceBox connected and stay on dashboard
   } else if(connState!=CONN_OK && down&&!touchDown&&y>=150 && raceboxCount>4){
     listPage=(listPage+1)%((raceboxCount+3)/4);
     while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
