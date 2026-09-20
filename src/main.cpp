@@ -523,8 +523,10 @@ void loop(){
       selectedRacebox=connIndex;
       saveRaceBox(raceboxAddr[selectedRacebox]);
     }
-    while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
-    drawRaceBoxList();
+    if(connState==CONN_FAIL){
+      while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+      drawRaceBoxList();
+    }
   }
   // After a confirmed RaceBox connection, leave the selector and show the timing
   // screen exactly once. BLE notification callback remains a no-op in this build.
@@ -567,8 +569,9 @@ void loop(){
       selectedRacebox=savedRaceboxIndex;
       rbConnected=false;
       startRaceBoxConnect(savedRaceboxIndex);
-      while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
-      drawRaceBoxList();
+      drawnConnState=CONN_WORKING;
+      // Keep this screen while connecting; successful connection goes straight to timing.
+      // On failure loop will show the selector.
     } else if(y>=108 && y<162 && x>=350 && x<570){
       askLastDevice=false;
       while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
