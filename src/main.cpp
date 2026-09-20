@@ -14,6 +14,7 @@ static uint16_t *nativeFrame=nullptr,*screen=nullptr;
 static String raceboxes[8];
 static String raceboxAddr[8];
 static int raceboxCount=0, selectedRacebox=0;
+static int listPage=0;
 static int bleSeen=0;
 static bool touchDown=false;
 static bool rbConnected=false;
@@ -150,11 +151,16 @@ static void drawRaceBoxList(){
   // Header/status blocks: green=scan complete, red=no devices.
   rect(12,12,180,22,bleSeen?green:red);
   num(210,10,String(raceboxCount).c_str(),4,white);
+  num(270,10,String(listPage+1).c_str(),4,white);
+  num(306,10,String((raceboxCount+3)/4).c_str(),4,white);
   // Total BLE advertisements seen, for hardware diagnostics even when no RaceBox matches.
   num(330,10,String(bleSeen).c_str(),4,white);
   // One visible row per discovered RaceBox (up to 4 on 180px screen).
-  for(int i=0;i<raceboxCount && i<4;i++){
-    int y=46+i*31;
+  int first=listPage*4;
+  for(int row=0;row<4;row++){
+    int i=first+row;
+    if(i>=raceboxCount) break;
+    int y=46+row*31;
     rect(12,y,616,25,(rbConnected&&i==selectedRacebox)?green:gray);
     num(22,y+3,String(i+1).c_str(),3,black);
     // RaceBox advertises a human-visible serial in its BLE name on supported models.
@@ -189,22 +195,11 @@ void setup(){
   uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800);
   for(size_t i=0;i<n;i++)screen[i]=black;
 
-  // PRÖÖT 640x180 dashboard skeleton.
-  rect(0,0,640,3,green);
-  rect(0,142,640,2,gray);
-  rect(420,3,2,139,gray);
-  rect(10,12,395,116,C(0x0841));
-  num(34,28,"123.4",10,white);          // speed placeholder
-  num(438,18,"0:00.000",4,green);       // delta/current placeholder
-  num(438,66,"1:23.456",3,white);       // last
-  num(438,102,"1:22.987",3,green);      // best
-  rect(12,151,90,18,green);             // RaceBox status
-  rect(112,151,90,18,gray);             // GPS status
-  rect(212,151,90,18,red);              // REC/status
-  num(535,149,"12",3,white);             // lap/sats placeholder
-
+  // Scan screen: do not draw the old 123.4 dashboard behind the BLE list.
+  rect(0,0,640,180,black);
+  rect(0,0,640,4,green);
   present();
-  Serial.println("PROOT UI SKELETON SENT");
+  Serial.println("BLE SCAN SCREEN");
   prefs.begin("proot",true); savedRbAddr=prefs.getString("rbAddr",""); prefs.end();
   scanRaceBoxes();
   // PRÖÖT-style behavior: prefer the previously selected RaceBox address.
@@ -238,15 +233,21 @@ void loop(){
     while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
     present();
   }
-  if(down&&!touchDown&&x>=12&&x<628&&y>=46){
-    int idx=(y-46)/31;
-    if(idx>=0&&idx<raceboxCount&&idx<4){
+  if(down&&!touchDown&&y>=150 && raceboxCount>4){
+    listPage=(listPage+1)%((raceboxCount+3)/4);
+    while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+    drawRaceBoxList();
+  } else if(down&&!touchDown&&x>=12&&x<628&&y>=46&&y<145){
+    int row=(y-46)/31;
+    int idx=listPage*4+row;
+    if(idx>=0&&idx<raceboxCount){
       selectedRacebox=idx;
       Serial.printf("Selected BLE %d: %s %s\\n",idx+1,raceboxes[idx].c_str(),raceboxAddr[idx].c_str());
       bool ok=connectSelectedRaceBox();
       // Immediate visible result: green row = confirmed RaceBox, red marker = not RaceBox/connect failed.
-      if(ok) rect(12,46+idx*31,616,25,C(0x07E0));
-      else rect(600,46+idx*31,28,25,C(0xF800));
+      int row=idx-listPage*4;
+      if(ok) rect(12,46+row*31,616,25,C(0x07E0));
+      else rect(600,46+row*31,28,25,C(0xF800));
       // Do not overwrite framebuffer while its previous DMA transfer is still queued.
       while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
       drawRaceBoxList();
