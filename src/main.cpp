@@ -283,11 +283,17 @@ void setup(){
   uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),gray=C(0x4208),red=C(0xF800);
   for(size_t i=0;i<n;i++)screen[i]=black;
 
-  // Show an intentional scan screen while the 10 s BLE scan is running.
-  // This replaces the unexplained blank area seen during startup.
+  // Startup splash shown while the 10 s BLE scan is running.
+  // AEP / Racing / Development
   rect(0,0,640,180,black);
   rect(0,0,640,4,green);
-  rect(12,68,616,44,gray);
+  // Large AEP mark using simple block geometry (no extra font dependency).
+  rect(154,35,12,62,white); rect(154,35,64,12,white); rect(206,35,12,62,white); rect(154,61,64,12,white);
+  rect(234,35,12,62,white); rect(234,35,66,12,white); rect(234,61,54,12,white); rect(234,85,66,12,white);
+  rect(316,35,12,62,white); rect(316,35,66,12,white); rect(370,35,12,38,white); rect(316,61,66,12,white);
+  // Small two-line wordmark represented by clean bars until the full UI font is added.
+  rect(230,116,180,5,gray);
+  rect(210,137,220,5,gray);
   while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
   present();
   while(transfer_num>0 && lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
