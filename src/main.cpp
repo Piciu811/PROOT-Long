@@ -326,10 +326,19 @@ void loop(){
   // Stable transition to the timing/dashboard page: draw only once, from loop(),
   // after the BLE connection is confirmed. Do not redraw at RaceBox notification rate.
   static bool timingShown=false;
+  static uint32_t lastTimingDraw=0;
   if(connState==CONN_OK && rbConnected && !timingShown){
     while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
     drawRaceBoxLive();
     timingShown=true;
+    lastTimingDraw=millis();
+  }
+  // LCD refresh is deliberately capped at 2 Hz. BLE notifications may arrive at
+  // 25 Hz, but they must never trigger framebuffer/DMA work directly.
+  if(connState==CONN_OK && rbConnected && timingShown && millis()-lastTimingDraw>=500){
+    lastTimingDraw=millis();
+    while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+    drawRaceBoxLive();
   }
   int x,y; bool down=readTouch(x,y);
   static uint32_t lastDiag=0;
