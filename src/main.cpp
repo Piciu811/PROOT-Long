@@ -396,8 +396,10 @@ static void drawRaceBoxLive(){
   // After crossing S/F, hold the completed lap time for five seconds.
   bool flashActive=lapFlashStarted && millis()-lapFlashStarted<5000u;
   char mainTime[16];
-  if(flashActive) fmtLap(lapLastMs,mainTime,sizeof(mainTime)); else snprintf(mainTime,sizeof(mainTime),"%s",lap);
-  uint16_t mainCol=(flashActive && lapLastMs && lapLastMs==lapBestMs)?green:white;
+  if(timingStopped && lapBestMs) fmtLap(lapBestMs,mainTime,sizeof(mainTime));
+  else if(flashActive) fmtLap(lapLastMs,mainTime,sizeof(mainTime));
+  else snprintf(mainTime,sizeof(mainTime),"%s",lap);
+  uint16_t mainCol=(timingStopped && lapBestMs)?green:((flashActive && lapLastMs && lapLastMs==lapBestMs)?green:white);
   numTallBold(6,48,mainTime,5,9,mainCol);
 
   // LAP label sits directly below the millisecond end of the main time.
