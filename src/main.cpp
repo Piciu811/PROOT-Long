@@ -85,7 +85,7 @@ static void scanRaceBoxes(){
       raceboxCount+1,name.c_str(),raceboxAddr[raceboxCount].c_str(),d.getRSSI(),serviceMatch);
     raceboxCount++;
   }
-  scan->clearResults();
+  // Keep scan results alive until connection attempt; clear only on the next scan.
 }
 static void saveRaceBox(const String &addr){
   prefs.begin("proot",false); prefs.putString("rbAddr",addr); prefs.end();
@@ -99,18 +99,27 @@ static ConnectState drawnConnState=CONN_IDLE;
 static bool probeRaceBoxAddress(const String &addr){
   BLEClient *client=BLEDevice::createClient();
   Serial.printf("PROBE %s...\\n",addr.c_str());
+  // Connect first; RaceBox exposes Nordic UART after GATT discovery.
   if(!client->connect(BLEAddress(addr.c_str()))){
-    Serial.println("PROBE connect failed"); delete client; return false;
+    Serial.println("PROBE FAIL: connect"); delete client; return false;
   }
   BLEUUID svc("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
+  BLEUUID rxid("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
+  BLEUUID txid("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");
   BLERemoteService *s=client->getService(svc);
   if(!s){
-    Serial.println("PROBE not RaceBox");
+    Serial.println("PROBE FAIL: no RaceBox UART service");
+    client->disconnect(); delete client; return false;
+  }
+  BLERemoteCharacteristic *rx=s->getCharacteristic(rxid);
+  BLERemoteCharacteristic *tx=s->getCharacteristic(txid);
+  if(!rx || !tx){
+    Serial.println("PROBE FAIL: RaceBox UART characteristics missing");
     client->disconnect(); delete client; return false;
   }
   rbClient=client;
   rbConnected=true; connectedAddr=addr; saveRaceBox(addr);
-  Serial.printf("RACEBOX CONFIRMED %s\\n",addr.c_str());
+  Serial.printf("RACEBOX CONFIRMED %s RX=%d TXnotify=%d\\n",addr.c_str(),rx!=nullptr,tx->canNotify());
   return true;
 }
 static bool connectSelectedRaceBox(){
