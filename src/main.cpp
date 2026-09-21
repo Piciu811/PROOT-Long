@@ -756,7 +756,7 @@ void loop(){
     if(down && !touchDown && onStop && !stopLongDone){ stopPressStarted=millis(); }
     if(down && stopPressStarted && !stopLongDone && millis()-stopPressStarted>=1500u){
       // Full reset: forget recorded laps and custom S/F, returning to the state before S/M.
-      lapClockRunning=false; timingStopped=false; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false;
+      rbRequestRecording(false);\n      lapClockRunning=false; timingStopped=false; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false;
       lapHistoryN=0; lapHistoryPage=0; refTraceN=curTraceN=refCursor=0; lastTraceTow=0; lastCrossTow=0;
       customLineValid=false; customLineArmed=false; customDirectionPending=false; havePrevFix=false;
       customLat=customLon=customDirX=customDirY=prevLat=prevLon=0; customSavedAt=0; lapFlashStarted=0;
