@@ -76,6 +76,15 @@ static void numTallBold(int x,int y,const char*t,int sx,int sy,uint16_t col){
     x+=6*sx; t++;
   }
 }
+static void numFullScreenBold(int x,int y,const char*t,int sx,int sy,uint16_t col){
+  while(*t){ int id=-1; if(*t>='0'&&*t<='9')id=*t-'0'; else if(*t==':')id=10; else if(*t=='.')id=11;
+    if(id>=0){
+      for(int cx=0;cx<5;cx++) for(int cy=0;cy<7;cy++) if(DIG[id][cx]&(1<<cy))
+        rect(x+cx*sx,y+cy*sy,sx+3,sy+1,col);
+    }
+    x+=6*sx; t++;
+  }
+}
 static const uint8_t ALPHA[26][5]={
  {0x7E,0x11,0x11,0x11,0x7E},{0x7F,0x49,0x49,0x49,0x36},{0x3E,0x41,0x41,0x41,0x22},{0x7F,0x41,0x41,0x22,0x1C},
  {0x7F,0x49,0x49,0x49,0x41},{0x7F,0x09,0x09,0x09,0x01},{0x3E,0x41,0x49,0x49,0x7A},{0x7F,0x08,0x08,0x08,0x7F},
@@ -449,7 +458,7 @@ static void drawRaceBoxLive(){
   if(flashActive){
     // Completed lap takeover: use the whole screen for five seconds.
     for(size_t i=0;i<180u*640u;i++) screen[i]=black;
-    numTallBold(8,35,mainTime,8,13,mainCol);
+    numFullScreenBold(8,2,mainTime,13,25,mainCol);
     present();
     return;
   }
@@ -481,7 +490,7 @@ static void drawRaceBoxLive(){
       if(idx>=lapHistoryN) break;
       char no[4],tm[16]; snprintf(no,sizeof(no),"%02d",idx+1); fmtLap(lapHistory[idx],tm,sizeof(tm));
       uint16_t lc=(lapHistory[idx] && lapHistory[idx]==lapBestMs)?green:white;
-      num(382,y,no,3,lc);
+      num(382,y,no,3,yellow);
       num(424,y,tm,3,lc);
     }
     if(lapHistoryN>3){
