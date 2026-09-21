@@ -18,7 +18,8 @@ static uint8_t raceboxAddrType[8]={0};
 static int raceboxCount=0, selectedRacebox=0;
 static int listPage=0;
 static int bleSeen=0;
-static bool touchDown=false;\nstatic bool touchLocked=false;
+static bool touchDown=false;
+static bool touchLocked=false;
 static bool rbConnected=false;
 static bool askLastDevice=false;
 static int savedRaceboxIndex=-1;
@@ -129,7 +130,8 @@ static void scanRaceBoxes(){
     raceboxes[raceboxCount]=name;
     raceboxAddr[raceboxCount]=String(d->getAddress().toString().c_str());
     raceboxAddrType[raceboxCount]=d->getAddress().getType();
-    Serial.printf("BLE candidate %d name='%s' addr=%s type=%u RSSI=%d RBsvc=%d\\n",
+    Serial.printf("BLE candidate %d name='%s' addr=%s type=%u RSSI=%d RBsvc=%d\
+",
       raceboxCount+1,name.c_str(),raceboxAddr[raceboxCount].c_str(),
       raceboxAddrType[raceboxCount],d->getRSSI(),serviceMatch);
     raceboxCount++;
@@ -194,7 +196,8 @@ static bool rbSendUbx(uint8_t cls,uint8_t id,const uint8_t *payload,uint16_t ple
   for(size_t i=2;i<6u+plen;i++){ a=(uint8_t)(a+pkt[i]); b=(uint8_t)(b+a); }
   pkt[6+plen]=a; pkt[7+plen]=b;
   bool ok=rbRx->writeValue(pkt,(size_t)plen+8u,true);
-  Serial.printf("RB CMD %02X/%02X %s\\n",cls,id,ok?"sent":"failed");
+  Serial.printf("RB CMD %02X/%02X %s\
+",cls,id,ok?"sent":"failed");
   return ok;
 }
 static void rbSendRecordingConfig(bool enable){
@@ -257,7 +260,8 @@ static void processRaceBoxStream(){
     if(a==fifo[6+plen] && b==fifo[7+plen] && fifo[2]==0xFF && (fifo[3]==0x02 || fifo[3]==0x03) && plen>=2){
       const bool ack=fifo[3]==0x02;
       const uint8_t ackCls=fifo[6], ackId=fifo[7];
-      Serial.printf("RB %s %02X/%02X\\n",ack?"ACK":"NACK",ackCls,ackId);
+      Serial.printf("RB %s %02X/%02X\
+",ack?"ACK":"NACK",ackCls,ackId);
       if(ackCls==0xFF && ackId==0x30 && rbRecordPending!=RB_REC_NONE){
         RbRecordPending cmd=rbRecordPending; rbRecordPending=RB_REC_NONE;
         if(ack) rbSendRecordingConfig(cmd==RB_REC_START);
@@ -280,7 +284,8 @@ static bool probeRaceBoxIndex(int idx){
   if(idx<0 || idx>=raceboxCount) return false;
   const String addr=raceboxAddr[idx];
   NimBLEAddress target(std::string(addr.c_str()),raceboxAddrType[idx]);
-  Serial.printf("NIMBLE PROBE %s type=%u...\\n",addr.c_str(),raceboxAddrType[idx]);
+  Serial.printf("NIMBLE PROBE %s type=%u...\
+",addr.c_str(),raceboxAddrType[idx]);
 
   NimBLEClient *stale=NimBLEDevice::getClientByPeerAddress(target);
   if(stale) NimBLEDevice::deleteClient(stale);
@@ -311,8 +316,10 @@ static bool probeRaceBoxIndex(int idx){
 
   rbClient=client;
   rbConnected=true; connectedAddr=addr; saveRaceBox(addr);
-  // REC stays armed/green by default; actual recording starts at first S/F crossing or S/M press.\n
-  Serial.printf("RACEBOX CONNECTED %s\\n",addr.c_str());
+  // REC stays armed/green by default; actual recording starts at first S/F crossing or S/M press.
+
+  Serial.printf("RACEBOX CONNECTED %s\
+",addr.c_str());
   return true;
 }
 static bool probeRaceBoxAddress(const String &addr){
@@ -390,7 +397,8 @@ static void detectFactoryTrack(double lat,double lon){
   }
   customLineValid=true; customDirectionPending=false; customLineArmed=false;
   factoryTrackActive=true; factoryTrackId=t.id; factoryTrackIndex=best; manualCustomLine=false; lastCrossTow=0;
-  Serial.printf("AUTO TRACK id=%u distance=%.0fm\\n",(unsigned)factoryTrackId,sqrt(bestD2));
+  Serial.printf("AUTO TRACK id=%u distance=%.0fm\
+",(unsigned)factoryTrackId,sqrt(bestD2));
 }
 static void saveCustomLine(){
   double lat,lon; uint8_t fix; float speed;
@@ -410,7 +418,8 @@ static void saveCustomLine(){
   refTraceN=curTraceN=refCursor=0; lastTraceTow=0; customSavedAt=millis();
   prefs.begin("proot",false); prefs.putDouble("sfLat",customLat); prefs.putDouble("sfLon",customLon);
   prefs.putDouble("sfDx",customDirX); prefs.putDouble("sfDy",customDirY); prefs.putBool("sfOk",true); prefs.end();
-  Serial.printf("CUSTOM SF SET %.7f %.7f pending=%d\\n",customLat,customLon,customDirectionPending);
+  Serial.printf("CUSTOM SF SET %.7f %.7f pending=%d\
+",customLat,customLon,customDirectionPending);
 }
 static void updateLapClock(){
   double lat,lon; uint32_t tow; uint8_t fix; float speed;
@@ -423,7 +432,8 @@ static void updateLapClock(){
     if(n>=3.0 && speed>=3.0f){
       customDirX=dx/n; customDirY=dy/n; customDirectionPending=false;
       prefs.begin("proot",false); prefs.putDouble("sfDx",customDirX); prefs.putDouble("sfDy",customDirY); prefs.end();
-      Serial.printf("CUSTOM SF DIRECTION %.3f %.3f\\n",customDirX,customDirY);
+      Serial.printf("CUSTOM SF DIRECTION %.3f %.3f\
+",customDirX,customDirY);
     }
   }
   if(customLineValid && !customDirectionPending && havePrevFix && !timingStopped){
@@ -453,7 +463,8 @@ static void updateLapClock(){
       }
       if(!lapClockRunning) rbRequestRecording(true);
       lapStartTow=tow; lapClockRunning=true; curTraceN=0; refCursor=0; lastTraceTow=0; lapDeltaValid=false;
-      Serial.printf("LAP CROSS #%u last=%lu best=%lu\\n",lapCount,(unsigned long)lapLastMs,(unsigned long)lapBestMs);
+      Serial.printf("LAP CROSS #%u last=%lu best=%lu\
+",lapCount,(unsigned long)lapLastMs,(unsigned long)lapBestMs);
     }
     if(lapClockRunning){
       uint32_t elapsed=tow-lapStartTow;
@@ -525,7 +536,8 @@ static void drawRaceBoxLive(){
   // Large STOP button in the center gutter, between the main timer and right panel.
   uint16_t darkgray=C(0x2104);
   rect(287,0,80,80,darkgray);
-  text5(295,28,"STOP",3,white);\n  if(touchLocked) text5(303,88,"RAIN",2,white);
+  text5(295,28,"STOP",3,white);
+  if(touchLocked) text5(303,88,"RAIN",2,white);
 
   // Before STOP keep the normal L/B/D panel. After STOP show the lap-history view.
   if(!timingStopped){
@@ -640,7 +652,8 @@ static void drawRaceBoxList(){
   present();
 }
 void setup(){
-  Serial.begin(115200); delay(200);\n  pinMode(PIN_BUTTON_1,INPUT_PULLUP);
+  Serial.begin(115200); delay(200);
+  pinMode(PIN_BUTTON_1,INPUT_PULLUP);
   pinMode(TFT_BL,OUTPUT); digitalWrite(TFT_BL,HIGH);
   // Official LilyGO touch example resets the shared AXS15231B/touch controller first.
   pinMode(TOUCH_RST,OUTPUT);
@@ -680,14 +693,17 @@ void setup(){
     for(int i=0;i<raceboxCount;i++) if(raceboxAddr[i].equalsIgnoreCase(savedRbAddr)){
       selectedRacebox=i;
       savedRaceboxIndex=i;
-      Serial.printf("Saved RaceBox found at row %d: %s\\n",i+1,savedRbAddr.c_str());
+      Serial.printf("Saved RaceBox found at row %d: %s\
+",i+1,savedRbAddr.c_str());
       break;
     }
   }
   // Do not connect/probe here: BLEClient::connect() can block setup for seconds per candidate.
   // Show the list immediately; connection is attempted only after the user selects a row.
-  Serial.printf("RaceBox found: %d\\n",raceboxCount);
-  for(int i=0;i<raceboxCount;i++) Serial.printf("%c %d: %s %s\\n",i==selectedRacebox?'>':' ',i+1,raceboxes[i].c_str(),raceboxAddr[i].c_str());
+  Serial.printf("RaceBox found: %d\
+",raceboxCount);
+  for(int i=0;i<raceboxCount;i++) Serial.printf("%c %d: %s %s\
+",i==selectedRacebox?'>':' ',i+1,raceboxes[i].c_str(),raceboxAddr[i].c_str());
   while(transfer_num>1){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
   if(savedRaceboxIndex>=0){ askLastDevice=true; drawLastDevicePrompt(); }
   else drawRaceBoxList();
@@ -700,7 +716,8 @@ void loop(){
   if(resetDown && !resetPressStarted && !resetHoldDone) resetPressStarted=millis();
   if(resetDown && resetPressStarted && !resetHoldDone && millis()-resetPressStarted>=3000u){
     touchLocked=!touchLocked; resetHoldDone=true; resetPressStarted=0;
-    Serial.printf("TOUCH LOCK %s\\n",touchLocked?"ON":"OFF");
+    Serial.printf("TOUCH LOCK %s\
+",touchLocked?"ON":"OFF");
     if(connState==CONN_OK && rbConnected && screen){
       while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
       drawRaceBoxLive();
@@ -751,9 +768,11 @@ void loop(){
     lastDiag=millis();
     Wire.beginTransmission(TOUCH_ADDR);
     int err=Wire.endTransmission();
-    Serial.printf("TOUCH I2C=%d INT=%d\\n",err,digitalRead(TOUCH_INT));
+    Serial.printf("TOUCH I2C=%d INT=%d\
+",err,digitalRead(TOUCH_INT));
   }
-  if(down&&!touchDown) Serial.printf("TOUCH DOWN x=%d y=%d\\n",x,y);
+  if(down&&!touchDown) Serial.printf("TOUCH DOWN x=%d y=%d\
+",x,y);
   // On the live dashboard a normal tap must not disconnect RaceBox.
   // Navigation/settings will get explicit touch zones later.
   if(askLastDevice && down&&!touchDown){
@@ -813,7 +832,8 @@ void loop(){
     int idx=listPage*3+row;
     if(idx>=0&&idx<raceboxCount){
       selectedRacebox=idx;
-      Serial.printf("Selected BLE %d: %s %s\\n",idx+1,raceboxes[idx].c_str(),raceboxAddr[idx].c_str());
+      Serial.printf("Selected BLE %d: %s %s\
+",idx+1,raceboxes[idx].c_str(),raceboxAddr[idx].c_str());
       // Connection runs on a separate FreeRTOS task, so touch/display stay responsive.
       rbConnected=false;
       startRaceBoxConnect(idx);
