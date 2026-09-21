@@ -517,10 +517,10 @@ static void drawRaceBoxLive(){
   }
   numTallBold(6,48,mainTime,5,9,mainCol);
 
-  // LAP label sits directly below the millisecond end of the main time.
-  // The two-digit count fills the lower gap before D without touching either area.
+  // LAP label aligned with REC and centered in the gap before the lap digits.
+  // REC ends at x=234; lap digits start at x=288. "LAP" is 36 px wide at size 2.
   char lapNo[3]; snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));
-  text5(240,141,"LAP",2,yellow);
+  text5(243,156,"LAP",2,yellow);
   numTallBold(288,122,lapNo,7,7,yellow);
   // Large STOP button in the center gutter, between the main timer and right panel.
   uint16_t darkgray=C(0x2104);
