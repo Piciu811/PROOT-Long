@@ -554,18 +554,18 @@ static void drawRaceBoxLive(){
       text5(602,158,"DN",1,white);
     }
   }
-  // Bottom controls: equal 50x80 buttons; labels centered horizontally.
-  rect(12,95,50,80,darkgray);
+  // Bottom controls: equal 70x60 buttons; labels centered horizontally.
+  rect(12,115,70,60,darkgray);
   uint16_t smCol=(lapClockRunning&&customLineValid)?green:red;
-  text5(13,156,"S",2,smCol);
+  text5(23,156,"S",2,smCol);
   // Draw slash directly: the built-in text/number fonts do not contain '/'.
-  for(int i=0;i<10;i++) rect(25+i,165-i,2,2,smCol);
-  text5(37,156,"M",2,smCol);
-  rect(68,95,50,80,darkgray);
-  text5(75,156,"SAT",2,sats>0?green:red);
+  for(int i=0;i<10;i++) rect(35+i,165-i,2,2,smCol);
+  text5(47,156,"M",2,smCol);
+  rect(88,115,70,60,darkgray);
+  text5(103,156,"SAT",2,sats>0?green:red);
   // RaceBox recording control: default ON; tap toggles recording immediately.
-  rect(124,95,50,80,darkgray);
-  text5(131,156,"REC",2,rbRecordingOn?green:red);
+  rect(164,115,70,60,darkgray);
+  text5(179,156,"REC",2,rbRecordingOn?green:red);
   // Packet counter kept internally; do not show it on the normal dashboard.
   present();
 }
@@ -787,11 +787,11 @@ void loop(){
       stopLongDone=false;
     }
     if(down && !touchDown && !onStop){
-      if(x>=12 && x<62 && y>=95 && y<175){
+      if(x>=12 && x<82 && y>=115 && y<175){
         saveCustomLine();
         while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
         drawRaceBoxLive();
-      } else if(x>=124 && x<174 && y>=95 && y<175){
+      } else if(x>=164 && x<234 && y>=115 && y<175){
         rbRequestRecording(!rbRecordingOn);
         while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
         drawRaceBoxLive();
