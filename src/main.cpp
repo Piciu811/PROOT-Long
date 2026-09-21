@@ -484,9 +484,10 @@ static void drawRaceBoxLive(){
   }
   // S/M restored to the original bottom-left position, enlarged to 72x60.
   rect(12,115,72,60,darkgray);
-  text5(18,135,"S",3,customLineValid?blue:red);
-  num(42,135,"/",3,customLineValid?blue:red);
-  text5(54,135,"M",3,customLineValid?blue:red);
+  text5(31,156,"S",2,customLineValid?blue:red);
+  // Draw slash directly: the built-in text/number fonts do not contain '/'.
+  for(int i=0;i<10;i++) rect(43+i,165-i,2,2,customLineValid?blue:red);
+  text5(55,156,"M",2,customLineValid?blue:red);
   // SAT remains a small status control at bottom-left.
   rect(90,151,58,24,darkgray);
   text5(101,156,"SAT",2,sats>0?green:red);
