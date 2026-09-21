@@ -554,19 +554,18 @@ static void drawRaceBoxLive(){
       text5(602,158,"DN",1,white);
     }
   }
-  // S/M restored to the original bottom-left position, enlarged to 72x60.
-  rect(12,115,72,60,darkgray);
+  // Bottom controls: equal 60x60 buttons with labels on the same baseline.
+  rect(12,115,60,60,darkgray);
   uint16_t smCol=(lapClockRunning&&customLineValid)?green:red;
-  text5(31,156,"S",2,smCol);
+  text5(18,156,"S",2,smCol);
   // Draw slash directly: the built-in text/number fonts do not contain '/'.
-  for(int i=0;i<10;i++) rect(43+i,165-i,2,2,smCol);
-  text5(55,156,"M",2,smCol);
-  // SAT remains a small status control at bottom-left.
-  rect(90,151,58,24,darkgray);
-  text5(101,156,"SAT",2,sats>0?green:red);
+  for(int i=0;i<10;i++) rect(30+i,165-i,2,2,smCol);
+  text5(42,156,"M",2,smCol);
+  rect(78,115,60,60,darkgray);
+  text5(84,156,"SAT",2,sats>0?green:red);
   // RaceBox recording control: default ON; tap toggles recording immediately.
-  rect(154,115,72,60,darkgray);
-  text5(171,136,"REC",2,rbRecordingOn?green:red);
+  rect(144,115,60,60,darkgray);
+  text5(150,156,"REC",2,rbRecordingOn?green:red);
   // Packet counter kept internally; do not show it on the normal dashboard.
   present();
 }
@@ -788,11 +787,11 @@ void loop(){
       stopLongDone=false;
     }
     if(down && !touchDown && !onStop){
-      if(x>=12 && x<84 && y>=115 && y<175){
+      if(x>=12 && x<72 && y>=115 && y<175){
         saveCustomLine();
         while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
         drawRaceBoxLive();
-      } else if(x>=154 && x<226 && y>=115 && y<175){
+      } else if(x>=144 && x<204 && y>=115 && y<175){
         rbRequestRecording(!rbRecordingOn);
         while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
         drawRaceBoxLive();
