@@ -175,6 +175,47 @@ static uint32_t lastTraceTow=0;
 static uint8_t rbStream[512];
 static size_t rbStreamLen=0;
 static NimBLERemoteCharacteristic *rbTx=nullptr,*rbRx=nullptr;
+
+// RaceBox Mini S / Micro standalone recording control.
+// Memory protection is reset on every BLE connection. The factory security code is 123456.
+enum RbRecordPending : uint8_t { RB_REC_NONE, RB_REC_START, RB_REC_STOP };
+static RbRecordPending rbRecordPending=RB_REC_NONE;
+static const uint32_t RB_SECURITY_CODE=123456u;
+
+static bool rbSendUbx(uint8_t cls,uint8_t id,const uint8_t *payload,uint16_t plen){
+  if(!rbConnected || !rbRx) return false;
+  uint8_t pkt[32];
+  if((size_t)plen+8u>sizeof(pkt)) return false;
+  pkt[0]=0xB5; pkt[1]=0x62; pkt[2]=cls; pkt[3]=id;
+  pkt[4]=(uint8_t)(plen&0xFF); pkt[5]=(uint8_t)(plen>>8);
+  if(plen && payload) memcpy(pkt+6,payload,plen);
+  uint8_t a=0,b=0;
+  for(size_t i=2;i<6u+plen;i++){ a=(uint8_t)(a+pkt[i]); b=(uint8_t)(b+a); }
+  pkt[6+plen]=a; pkt[7+plen]=b;
+  bool ok=rbRx->writeValue(pkt,(size_t)plen+8u,true);
+  Serial.printf("RB CMD %02X/%02X %s\\n",cls,id,ok?"sent":"failed");
+  return ok;
+}
+static void rbSendRecordingConfig(bool enable){
+  uint8_t p[12]={0};
+  if(enable){
+    p[0]=1;       // enable recording immediately
+    p[1]=0;       // 25 Hz
+    p[2]=0x01;    // wait for GNSS fix; no stationary filter (standing starts supported)
+  }
+  rbSendUbx(0xFF,0x25,p,sizeof(p));
+}
+static void rbRequestRecording(bool start){
+  rbRecordPending=start?RB_REC_START:RB_REC_STOP;
+  uint8_t p[4]={
+    (uint8_t)(RB_SECURITY_CODE&0xFF),
+    (uint8_t)((RB_SECURITY_CODE>>8)&0xFF),
+    (uint8_t)((RB_SECURITY_CODE>>16)&0xFF),
+    (uint8_t)((RB_SECURITY_CODE>>24)&0xFF)
+  };
+  if(!rbSendUbx(0xFF,0x30,p,sizeof(p))) rbRecordPending=RB_REC_NONE;
+}
+
 enum ConnectState : uint8_t { CONN_IDLE, CONN_WORKING, CONN_OK, CONN_FAIL };
 static volatile ConnectState connState=CONN_IDLE;
 static volatile int connIndex=-1;
@@ -211,7 +252,15 @@ static void processRaceBoxStream(){
     if(fifoLen<fl) break;
     uint8_t a=0,b=0;
     for(size_t i=2;i<6u+plen;i++){ a=(uint8_t)(a+fifo[i]); b=(uint8_t)(b+a); }
-    if(a==fifo[6+plen] && b==fifo[7+plen] && fifo[2]==0xFF && fifo[3]==0x01 && plen>=80){
+    if(a==fifo[6+plen] && b==fifo[7+plen] && fifo[2]==0xFF && (fifo[3]==0x02 || fifo[3]==0x03) && plen>=2){
+      const bool ack=fifo[3]==0x02;
+      const uint8_t ackCls=fifo[6], ackId=fifo[7];
+      Serial.printf("RB %s %02X/%02X\\n",ack?"ACK":"NACK",ackCls,ackId);
+      if(ackCls==0xFF && ackId==0x30 && rbRecordPending!=RB_REC_NONE){
+        RbRecordPending cmd=rbRecordPending; rbRecordPending=RB_REC_NONE;
+        if(ack) rbSendRecordingConfig(cmd==RB_REC_START);
+      }
+    } else if(a==fifo[6+plen] && b==fifo[7+plen] && fifo[2]==0xFF && fifo[3]==0x01 && plen>=80){
       const uint8_t *p=fifo+6;
       uint32_t speedMm=0,tow=0; int32_t lonRaw=0,latRaw=0;
       memcpy(&tow,p+0,4); memcpy(&lonRaw,p+24,4); memcpy(&latRaw,p+28,4); memcpy(&speedMm,p+48,4);
@@ -353,7 +402,7 @@ static void saveCustomLine(){
     double n=sqrt(dx*dx+dy*dy);
     if(n>=0.20){ customDirX=dx/n; customDirY=dy/n; customDirectionPending=false; }
   }
-  lapStartTow=rbTowMs; lapClockRunning=true; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false; lastCrossTow=0;
+  lapStartTow=rbTowMs; lapClockRunning=true; rbRequestRecording(true); lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false; lastCrossTow=0;
   lapHistoryN=0; lapHistoryPage=0; timingStopped=false;
   refTraceN=curTraceN=refCursor=0; lastTraceTow=0; customSavedAt=millis();
   prefs.begin("proot",false); prefs.putDouble("sfLat",customLat); prefs.putDouble("sfLon",customLon);
@@ -399,7 +448,7 @@ static void updateLapClock(){
           }
         }
       }
-      lapStartTow=tow; lapClockRunning=true; curTraceN=0; refCursor=0; lastTraceTow=0; lapDeltaValid=false;
+      if(!lapClockRunning) rbRequestRecording(true);\n      lapStartTow=tow; lapClockRunning=true; curTraceN=0; refCursor=0; lastTraceTow=0; lapDeltaValid=false;
       Serial.printf("LAP CROSS #%u last=%lu best=%lu\\n",lapCount,(unsigned long)lapLastMs,(unsigned long)lapBestMs);
     }
     if(lapClockRunning){
@@ -722,7 +771,7 @@ void loop(){
     }
     if(!down && touchDown){
       if(stopPressStarted && !stopLongDone && millis()-stopPressStarted<1500u){
-        timingStopped=true; lapClockRunning=false; lapDeltaValid=false; lapFlashStarted=0;
+        rbRequestRecording(false); timingStopped=true; lapClockRunning=false; lapDeltaValid=false; lapFlashStarted=0;
         while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
         drawRaceBoxLive();
       }
