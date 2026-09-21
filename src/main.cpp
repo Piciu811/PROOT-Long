@@ -180,6 +180,7 @@ static NimBLERemoteCharacteristic *rbTx=nullptr,*rbRx=nullptr;
 // Memory protection is reset on every BLE connection. The factory security code is 123456.
 enum RbRecordPending : uint8_t { RB_REC_NONE, RB_REC_START, RB_REC_STOP };
 static RbRecordPending rbRecordPending=RB_REC_NONE;
+static bool rbRecordingOn=true;
 static const uint32_t RB_SECURITY_CODE=123456u;
 
 static bool rbSendUbx(uint8_t cls,uint8_t id,const uint8_t *payload,uint16_t plen){
@@ -206,6 +207,7 @@ static void rbSendRecordingConfig(bool enable){
   rbSendUbx(0xFF,0x25,p,sizeof(p));
 }
 static void rbRequestRecording(bool start){
+  rbRecordingOn=start;
   rbRecordPending=start?RB_REC_START:RB_REC_STOP;
   uint8_t p[4]={
     (uint8_t)(RB_SECURITY_CODE&0xFF),
@@ -309,6 +311,7 @@ static bool probeRaceBoxIndex(int idx){
 
   rbClient=client;
   rbConnected=true; connectedAddr=addr; saveRaceBox(addr);
+  rbRequestRecording(rbRecordingOn);
   Serial.printf("RACEBOX CONNECTED %s\\n",addr.c_str());
   return true;
 }
@@ -553,13 +556,17 @@ static void drawRaceBoxLive(){
   }
   // S/M restored to the original bottom-left position, enlarged to 72x60.
   rect(12,115,72,60,darkgray);
-  text5(31,156,"S",2,(lapClockRunning&&customLineValid)?green:(customLineValid?blue:red));
+  uint16_t smCol=(lapClockRunning&&customLineValid)?green:red;
+  text5(31,156,"S",2,smCol);
   // Draw slash directly: the built-in text/number fonts do not contain '/'.
-  for(int i=0;i<10;i++) rect(43+i,165-i,2,2,(lapClockRunning&&customLineValid)?green:(customLineValid?blue:red));
-  text5(55,156,"M",2,(lapClockRunning&&customLineValid)?green:(customLineValid?blue:red));
+  for(int i=0;i<10;i++) rect(43+i,165-i,2,2,smCol);
+  text5(55,156,"M",2,smCol);
   // SAT remains a small status control at bottom-left.
   rect(90,151,58,24,darkgray);
   text5(101,156,"SAT",2,sats>0?green:red);
+  // RaceBox recording control: default ON; tap toggles recording immediately.
+  rect(154,115,72,60,darkgray);
+  text5(171,136,"REC",2,rbRecordingOn?green:red);
   // Packet counter kept internally; do not show it on the normal dashboard.
   present();
 }
@@ -783,6 +790,10 @@ void loop(){
     if(down && !touchDown && !onStop){
       if(x>=12 && x<84 && y>=115 && y<175){
         saveCustomLine();
+        while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+        drawRaceBoxLive();
+      } else if(x>=154 && x<226 && y>=115 && y<175){
+        rbRequestRecording(!rbRecordingOn);
         while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
         drawRaceBoxLive();
       } else if(x>=590 && y<60 && lapHistoryPage>0){
