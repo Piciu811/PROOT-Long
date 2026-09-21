@@ -640,7 +640,7 @@ static void drawRaceBoxList(){
   present();
 }
 void setup(){
-  Serial.begin(115200); delay(200);
+  Serial.begin(115200); delay(200);\n  pinMode(PIN_BUTTON_1,INPUT_PULLUP);
   pinMode(TFT_BL,OUTPUT); digitalWrite(TFT_BL,HIGH);
   // Official LilyGO touch example resets the shared AXS15231B/touch controller first.
   pinMode(TOUCH_RST,OUTPUT);
@@ -693,6 +693,20 @@ void setup(){
   else drawRaceBoxList();
 }
 void loop(){
+  // Physical enclosure RESET/BOOT button (GPIO0): hold 3 s to toggle touch lock.
+  static uint32_t resetPressStarted=0;
+  static bool resetHoldDone=false;
+  bool resetDown=(digitalRead(PIN_BUTTON_1)==LOW);
+  if(resetDown && !resetPressStarted && !resetHoldDone) resetPressStarted=millis();
+  if(resetDown && resetPressStarted && !resetHoldDone && millis()-resetPressStarted>=3000u){
+    touchLocked=!touchLocked; resetHoldDone=true; resetPressStarted=0;
+    Serial.printf("TOUCH LOCK %s\\n",touchLocked?"ON":"OFF");
+    if(connState==CONN_OK && rbConnected && screen){
+      while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
+      drawRaceBoxLive();
+    }
+  }
+  if(!resetDown){ resetPressStarted=0; resetHoldDone=false; }
   if(transfer_num<=1&&lcd_PushColors_len>0)lcd_PushColors(0,0,0,0,NULL);
   processRaceBoxStream();
   updateLapClock();
@@ -757,44 +771,32 @@ void loop(){
       drawRaceBoxList();
     }
   } else if(connState==CONN_OK){
-    // STOP is also the touch-lock control: hold 3 s to toggle lock.
-    // While locked, every touch except STOP is ignored so the same hold can unlock it.
     static uint32_t stopPressStarted=0;
     static bool stopLongDone=false;
     bool onStop=(x>=287 && x<367 && y>=0 && y<80);
-    if(down && !touchDown && onStop){ stopPressStarted=millis(); stopLongDone=false; }
-    if(down && onStop && stopPressStarted && !stopLongDone && millis()-stopPressStarted>=3000u){
-      touchLocked=!touchLocked;
-      stopLongDone=true;
-      Serial.printf("TOUCH LOCK %s\\n",touchLocked?"ON":"OFF");
-      while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
-      drawRaceBoxLive();
+    if(!touchLocked && down && !touchDown && onStop && !stopLongDone){ stopPressStarted=millis(); }
+    if(!touchLocked && down && stopPressStarted && !stopLongDone && millis()-stopPressStarted>=1500u){
+      rbRequestRecording(false);
+      lapClockRunning=false; timingStopped=false; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false;
+      lapHistoryN=0; lapHistoryPage=0; refTraceN=curTraceN=refCursor=0; lastTraceTow=0; lastCrossTow=0;
+      customLineValid=false; customLineArmed=false; customDirectionPending=false; havePrevFix=false;
+      customLat=customLon=customDirX=customDirY=prevLat=prevLon=0; customSavedAt=0; lapFlashStarted=0;
+      prefs.begin("proot",false); prefs.putBool("sfOk",false); prefs.remove("sfLat"); prefs.remove("sfLon"); prefs.remove("sfDx"); prefs.remove("sfDy"); prefs.end();
+      timingStopped=false; stopLongDone=true; stopPressStarted=0;
+      while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); } drawRaceBoxLive();
     }
-    if(!down && touchDown){
-      if(onStop && stopPressStarted && !stopLongDone && millis()-stopPressStarted<3000u && !touchLocked){
+    if(!touchLocked && !down && touchDown){
+      if(stopPressStarted && !stopLongDone && millis()-stopPressStarted<1500u){
         rbRequestRecording(false); timingStopped=true; lapClockRunning=false; lapDeltaValid=false; lapFlashStarted=0;
-        while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
-        drawRaceBoxLive();
+        while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); } drawRaceBoxLive();
       }
-      stopPressStarted=0;
-      stopLongDone=false;
+      stopPressStarted=0; stopLongDone=false;
     }
     if(!touchLocked && down && !touchDown && !onStop){
-      if(x>=12 && x<82 && y>=115 && y<175){
-        saveCustomLine();
-        while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
-        drawRaceBoxLive();
-      } else if(x>=164 && x<234 && y>=115 && y<175){
-        rbRequestRecording(!rbRecordingOn);
-        while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
-        drawRaceBoxLive();
-      } else if(x>=590 && y<60 && lapHistoryPage>0){
-        lapHistoryPage--;
-        while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); } drawRaceBoxLive();
-      } else if(x>=590 && y>=120 && lapHistoryN>(lapHistoryPage+1)*3){
-        lapHistoryPage++;
-        while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); } drawRaceBoxLive();
-      }
+      if(x>=12 && x<82 && y>=115 && y<175){ saveCustomLine(); while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); } drawRaceBoxLive(); }
+      else if(x>=164 && x<234 && y>=115 && y<175){ rbRequestRecording(!rbRecordingOn); while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); } drawRaceBoxLive(); }
+      else if(x>=590 && y<60 && lapHistoryPage>0){ lapHistoryPage--; while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); } drawRaceBoxLive(); }
+      else if(x>=590 && y>=120 && lapHistoryN>(lapHistoryPage+1)*3){ lapHistoryPage++; while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); } drawRaceBoxLive(); }
     }
   } else if(connState!=CONN_OK && down&&!touchDown&&x>=390&&x<580&&y>=12&&y<54){
     int pages=max(1,(raceboxCount+2)/3);
