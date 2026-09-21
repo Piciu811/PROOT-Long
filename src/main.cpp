@@ -18,7 +18,7 @@ static uint8_t raceboxAddrType[8]={0};
 static int raceboxCount=0, selectedRacebox=0;
 static int listPage=0;
 static int bleSeen=0;
-static bool touchDown=false;
+static bool touchDown=false;\nstatic bool touchLocked=false;
 static bool rbConnected=false;
 static bool askLastDevice=false;
 static int savedRaceboxIndex=-1;
@@ -525,7 +525,7 @@ static void drawRaceBoxLive(){
   // Large STOP button in the center gutter, between the main timer and right panel.
   uint16_t darkgray=C(0x2104);
   rect(287,0,80,80,darkgray);
-  text5(295,28,"STOP",3,white);
+  text5(295,28,"STOP",3,white);\n  if(touchLocked) text5(303,88,"RAIN",2,white);
 
   // Before STOP keep the normal L/B/D panel. After STOP show the lap-history view.
   if(!timingStopped){
@@ -757,28 +757,21 @@ void loop(){
       drawRaceBoxList();
     }
   } else if(connState==CONN_OK){
+    // STOP is also the touch-lock control: hold 3 s to toggle lock.
+    // While locked, every touch except STOP is ignored so the same hold can unlock it.
     static uint32_t stopPressStarted=0;
     static bool stopLongDone=false;
     bool onStop=(x>=287 && x<367 && y>=0 && y<80);
-    if(down && !touchDown && onStop && !stopLongDone){ stopPressStarted=millis(); }
-    if(down && stopPressStarted && !stopLongDone && millis()-stopPressStarted>=1500u){
-      // Full reset: forget recorded laps and custom S/F, returning to the state before S/M.
-      rbRequestRecording(false);
-      lapClockRunning=false; timingStopped=false; lapCount=0; lapLastMs=lapBestMs=0; lapDeltaValid=false;
-      lapHistoryN=0; lapHistoryPage=0; refTraceN=curTraceN=refCursor=0; lastTraceTow=0; lastCrossTow=0;
-      customLineValid=false; customLineArmed=false; customDirectionPending=false; havePrevFix=false;
-      customLat=customLon=customDirX=customDirY=prevLat=prevLon=0; customSavedAt=0; lapFlashStarted=0;
-      prefs.begin("proot",false);
-      prefs.putBool("sfOk",false); prefs.remove("sfLat"); prefs.remove("sfLon"); prefs.remove("sfDx"); prefs.remove("sfDy");
-      prefs.end();
-      timingStopped=false;
+    if(down && !touchDown && onStop){ stopPressStarted=millis(); stopLongDone=false; }
+    if(down && onStop && stopPressStarted && !stopLongDone && millis()-stopPressStarted>=3000u){
+      touchLocked=!touchLocked;
       stopLongDone=true;
-      stopPressStarted=0;
+      Serial.printf("TOUCH LOCK %s\\n",touchLocked?"ON":"OFF");
       while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
       drawRaceBoxLive();
     }
     if(!down && touchDown){
-      if(stopPressStarted && !stopLongDone && millis()-stopPressStarted<1500u){
+      if(onStop && stopPressStarted && !stopLongDone && millis()-stopPressStarted<3000u && !touchLocked){
         rbRequestRecording(false); timingStopped=true; lapClockRunning=false; lapDeltaValid=false; lapFlashStarted=0;
         while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
         drawRaceBoxLive();
@@ -786,7 +779,7 @@ void loop(){
       stopPressStarted=0;
       stopLongDone=false;
     }
-    if(down && !touchDown && !onStop){
+    if(!touchLocked && down && !touchDown && !onStop){
       if(x>=12 && x<82 && y>=115 && y<175){
         saveCustomLine();
         while(lcd_PushColors_len>0){ lcd_PushColors(0,0,0,0,NULL); delay(1); }
