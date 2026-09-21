@@ -458,7 +458,7 @@ static void drawRaceBoxLive(){
   if(flashActive){
     // Completed lap takeover: use the whole screen for five seconds.
     for(size_t i=0;i<180u*640u;i++) screen[i]=black;
-    numFullScreenBold(8,2,mainTime,13,25,mainCol);
+    numTallBold(128,44,mainTime,8,13,mainCol);
     present();
     return;
   }
