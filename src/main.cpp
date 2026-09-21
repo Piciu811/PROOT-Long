@@ -311,7 +311,7 @@ static bool probeRaceBoxIndex(int idx){
 
   rbClient=client;
   rbConnected=true; connectedAddr=addr; saveRaceBox(addr);
-  rbRequestRecording(rbRecordingOn);
+  // REC stays armed/green by default; actual recording starts at first S/F crossing or S/M press.\n
   Serial.printf("RACEBOX CONNECTED %s\\n",addr.c_str());
   return true;
 }
