@@ -446,6 +446,13 @@ static void drawRaceBoxLive(){
   else if(flashActive) fmtLap(lapLastMs,mainTime,sizeof(mainTime));
   else snprintf(mainTime,sizeof(mainTime),"%s",lap);
   uint16_t mainCol=(timingStopped && lapBestMs)?green:((flashActive && lapLastMs && lapLastMs==lapBestMs)?green:white);
+  if(flashActive){
+    // Completed lap takeover: use the whole screen for five seconds.
+    for(size_t i=0;i<180u*640u;i++) screen[i]=black;
+    numTallBold(8,35,mainTime,8,13,mainCol);
+    present();
+    return;
+  }
   numTallBold(6,48,mainTime,5,9,mainCol);
 
   // LAP label sits directly below the millisecond end of the main time.
@@ -478,8 +485,11 @@ static void drawRaceBoxLive(){
       num(424,y,tm,3,lc);
     }
     if(lapHistoryN>3){
-      text5(602,8,"UP",1,gray);
-      text5(602,158,"DN",1,gray);
+      // Keep the existing 50x60 touch areas, but show gray buttons like STOP.
+      rect(590,0,50,60,darkgray);
+      rect(590,120,50,60,darkgray);
+      text5(602,8,"UP",1,white);
+      text5(602,158,"DN",1,white);
     }
   }
   // S/M restored to the original bottom-left position, enlarged to 72x60.
