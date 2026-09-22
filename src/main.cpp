@@ -545,9 +545,11 @@ static void drawRaceBoxLive(){
     fmtLap(lapLastMs,lt,sizeof(lt));
     fmtLap(lapBestMs,bt,sizeof(bt));
     if(lapDeltaValid) fmtDelta(lapDeltaMs,dt,sizeof(dt)); else snprintf(dt,sizeof(dt),"+0.000");
-    text5(382,13,"L",3,white);  num(422,7,lt,4,white);
-    text5(382,69,"B",3,green); num(422,63,bt,4,green);
-    text5(382,125,"D",3,white); num(422,119,dt,4,lapDeltaValid?(lapDeltaMs<=0?green:red):white);
+    // Delta dominates the top of the right panel; L/B are compact at the bottom.
+    text5(382,6,"D",3,white);
+    num(418,0,dt,7,lapDeltaValid?(lapDeltaMs<=0?green:red):white);
+    text5(382,126,"L",2,white); num(406,122,lt,2,white);
+    text5(382,157,"B",2,green); num(406,153,bt,2,green);
   } else {
     int first=(int)lapHistoryPage*3;
     for(int row=0;row<3;row++){
