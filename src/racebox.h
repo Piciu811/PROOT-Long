@@ -1,8 +1,8 @@
 #pragma once
 
 #include <Arduino.h>
+#include <NimBLEDevice.h>
 
-// Public RaceBox telemetry exposed to the rest of the firmware.
 struct RaceBoxTelemetry {
   bool connected = false;
   bool liveValid = false;
@@ -17,8 +17,13 @@ struct RaceBoxTelemetry {
   bool leanValid = false;
 };
 
-// First stage of the modularisation. Implementation will be moved from
-// main.cpp into racebox.cpp while preserving the existing behaviour.
 namespace RaceBox {
+  void reset();
+  void setConnection(NimBLEClient *client, NimBLERemoteCharacteristic *rx, bool connected);
+  void notify(NimBLERemoteCharacteristic *characteristic, uint8_t *data, size_t len, bool isNotify);
+  void process();
+  bool sendUbx(uint8_t cls, uint8_t id, const uint8_t *payload, uint16_t plen);
+  void requestRecording(bool start);
+  bool recordingEnabled();
   const RaceBoxTelemetry &telemetry();
 }
