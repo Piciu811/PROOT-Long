@@ -29,6 +29,13 @@ void reset(){
   leanTow=0;
   portEXIT_CRITICAL(&dataMux);
   client=nullptr; rx=nullptr; recordPending=REC_NONE; recordingOn=true;
+
+  // Bring the BLE controller up explicitly before main.cpp starts discovery.
+  // This keeps BLE startup deterministic after the RaceBox code was moved
+  // out of main.cpp during the modularisation refactor.
+  NimBLEDevice::init("");
+  NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+  delay(50);
 }
 
 void setConnection(NimBLEClient *c,NimBLERemoteCharacteristic *r,bool connected){
