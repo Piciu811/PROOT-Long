@@ -15,10 +15,17 @@ struct LapTimerState {
   uint8_t historyCount=0,historyPage=0;
 };
 
+struct LapTimerLine {
+  bool valid=false;
+  double lat=0,lon=0,dirX=0,dirY=0;
+};
+
 namespace LapTimer {
   void reset();
   void update(const RaceBoxTelemetry &gps);
   void setCustomStartFinish(const RaceBoxTelemetry &gps);
+  void restoreCustomStartFinish(double lat,double lon,double dirX,double dirY);
+  LapTimerLine line();
   void stop();
   void resume();
   void historyPageUp();
