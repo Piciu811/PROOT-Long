@@ -151,16 +151,19 @@ static void processRaceBoxStream(){
       float lean=rbLeanDeg;
       bool stationary=speedKmh<3.0f;
 
-      // Automatic zero/bias calibration while stationary. This removes the observed
-      // installation offset (about -4.6 deg on a flat surface) without hard-coding it.
-      if(stationary){
+      // Calibrate zero and gyro bias only once after connection while the unit is still.
+      // After calibration the zero is frozen, so holding the unit at an angle cannot
+      // redefine that angle as the new zero.
+      if(!rbLeanCalibrated&&stationary){
         if(rbLeanCalSamples==0){rbLeanAccelZero=accelRoll;rbLeanGyroBias=gyroDps;}
         else{
           rbLeanAccelZero=0.98f*rbLeanAccelZero+0.02f*accelRoll;
           rbLeanGyroBias=0.98f*rbLeanGyroBias+0.02f*gyroDps;
         }
-        if(rbLeanCalSamples<2000)rbLeanCalSamples++;
-        if(rbLeanCalSamples>=25)rbLeanCalibrated=true;
+        if(fabsf(gyroDps-rbLeanGyroBias)<2.0f){
+          if(rbLeanCalSamples<2000)rbLeanCalSamples++;
+          if(rbLeanCalSamples>=50)rbLeanCalibrated=true;
+        }else rbLeanCalSamples=0;
       }
 
       if(!rbLeanValid){
@@ -172,16 +175,19 @@ static void processRaceBoxStream(){
           float dt=dms*0.001f;
           float correctedGyro=gyroDps-rbLeanGyroBias;
           lean+=correctedGyro*dt;
-          // Only use gravity as a long-term reference while nearly stationary.
-          // During riding, accelerometer forces are not interpreted as lean.
+
+          // Correct long-term drift only when the unit is both stationary and close
+          // to the calibrated upright position. A deliberate lean is therefore held.
           if(stationary&&rbLeanCalibrated){
             float accelLean=accelRoll-rbLeanAccelZero;
-            lean=0.90f*lean+0.10f*accelLean;
-            if(fabsf(correctedGyro)<0.8f&&fabsf(accelLean)<2.0f)lean*=0.92f;
+            if(fabsf(accelLean)<8.0f&&fabsf(correctedGyro)<1.0f){
+              lean=0.995f*lean+0.005f*accelLean;
+              rbLeanGyroBias=0.999f*rbLeanGyroBias+0.001f*gyroDps;
+            }
           }
         }
       }
-      if(lean>75.0f)lean=75.0f;if(lean<-75.0f)lean=-75.0f;rbLeanTow=tow;
+      if(lean>89.9f)lean=89.9f;if(lean<-89.9f)lean=-89.9f;rbLeanTow=tow;
       portENTER_CRITICAL(&rbDataMux);rbTowMs=tow;rbLon=(double)lonRaw/10000000.0;rbLat=(double)latRaw/10000000.0;rbFix=p[20];rbSats=p[23];rbSpeedKmh=speedKmh;rbLeanDeg=lean;rbLivePackets++;rbLiveValid=true;portEXIT_CRITICAL(&rbDataMux);
     }
     memmove(fifo,fifo+fl,fifoLen-fl);fifoLen-=fl;
