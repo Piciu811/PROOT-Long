@@ -96,7 +96,8 @@ static uint32_t rbTowMs=0;
 static uint8_t rbFix=0,rbSats=0;
 static float rbLeanDeg=0.0f;
 static bool rbLeanValid=false;
-static uint32_t rbLeanTow=0;
+static uint32_t rbLeanUs=0;
+static float rbGyroBiasX=0.0f;
 static uint32_t lapStartTow=0, lapLastMs=0, lapBestMs=0;
 static int32_t lapDeltaMs=0;
 static bool lapDeltaValid=false;
@@ -141,17 +142,36 @@ static void processRaceBoxStream(){
     else if(a==fifo[6+plen]&&b==fifo[7+plen]&&fifo[2]==0xFF&&fifo[3]==0x01&&plen>=80){
       const uint8_t *p=fifo+6; uint32_t speedMm=0,tow=0;int32_t lonRaw=0,latRaw=0;int16_t gY=0,gZ=0,gyroX=0;
       memcpy(&tow,p+0,4);memcpy(&lonRaw,p+24,4);memcpy(&latRaw,p+28,4);memcpy(&speedMm,p+48,4);memcpy(&gY,p+70,2);memcpy(&gZ,p+72,2);memcpy(&gyroX,p+74,2);
-      float speedKmh=(float)speedMm*0.0036f; float accelRoll=atan2f((float)gY,(float)gZ)*57.2957795f; float lean=rbLeanDeg;
-      if(!rbLeanValid){lean=accelRoll;rbLeanValid=true;} else {uint32_t dms=tow-rbLeanTow;if(dms>0&&dms<250u){float dt=dms*0.001f;lean+=(float)gyroX*0.01f*dt;if(speedKmh<8.0f)lean=0.96f*lean+0.04f*accelRoll;}}
-      if(lean>89.9f)lean=89.9f;if(lean<-89.9f)lean=-89.9f;rbLeanTow=tow;
+      float speedKmh=(float)speedMm*0.0036f;
+      float accelRoll=atan2f((float)gY,(float)gZ)*57.2957795f;
+      float rawGyroRate=(float)gyroX*0.01f;
+      uint32_t nowUs=micros();
+      float lean=rbLeanDeg;
+      if(!rbLeanValid){
+        lean=accelRoll;
+        rbLeanValid=true;
+        rbLeanUs=nowUs;
+        rbGyroBiasX=rawGyroRate;
+      } else {
+        uint32_t dus=nowUs-rbLeanUs;
+        rbLeanUs=nowUs;
+        float dt=(float)dus*0.000001f;
+        if(dt>0.0f&&dt<0.25f){
+          if(speedKmh<3.0f&&fabsf(rawGyroRate-rbGyroBiasX)<3.0f)rbGyroBiasX=0.995f*rbGyroBiasX+0.005f*rawGyroRate;
+          float gyroRate=rawGyroRate-rbGyroBiasX;
+          lean+=gyroRate*dt;
+          if(speedKmh<8.0f)lean=0.96f*lean+0.04f*accelRoll;
+        }
+      }
+      if(lean>89.9f)lean=89.9f;if(lean<-89.9f)lean=-89.9f;
       portENTER_CRITICAL(&rbDataMux);rbTowMs=tow;rbLon=(double)lonRaw/10000000.0;rbLat=(double)latRaw/10000000.0;rbFix=p[20];rbSats=p[23];rbSpeedKmh=speedKmh;rbLeanDeg=lean;rbLivePackets++;rbLiveValid=true;portEXIT_CRITICAL(&rbDataMux);
     }
     memmove(fifo,fifo+fl,fifoLen-fl);fifoLen-=fl;
   }
 }
-static bool probeRaceBoxIndex(int idx){ if(idx<0||idx>=raceboxCount)return false;const String addr=raceboxAddr[idx];NimBLEAddress target(std::string(addr.c_str()),raceboxAddrType[idx]);Serial.printf("NIMBLE PROBE %s type=%u...\n",addr.c_str(),raceboxAddrType[idx]);NimBLEClient *stale=NimBLEDevice::getClientByPeerAddress(target);if(stale)NimBLEDevice::deleteClient(stale);NimBLEClient *client=NimBLEDevice::createClient();if(!client){Serial.println("PROBE FAIL: createClient");return false;}if(!client->connect(target)){Serial.println("PROBE FAIL: connect");NimBLEDevice::deleteClient(client);return false;}NimBLERemoteService *svc=client->getService("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");if(!svc){client->disconnect();NimBLEDevice::deleteClient(client);return false;}rbRx=svc->getCharacteristic("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");rbTx=svc->getCharacteristic("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");if(!rbRx||!rbTx||!rbTx->canNotify()){client->disconnect();NimBLEDevice::deleteClient(client);rbRx=nullptr;rbTx=nullptr;return false;}if(!rbTx->subscribe(true,rbNotify)){client->disconnect();NimBLEDevice::deleteClient(client);rbRx=nullptr;rbTx=nullptr;return false;}rbClient=client;rbConnected=true;connectedAddr=addr;saveRaceBox(addr);Serial.printf("RACEBOX CONNECTED %s\n",addr.c_str());return true; }
+static bool probeRaceBoxIndex(int idx){ if(idx<0||idx>=raceboxCount)return false;const String addr=raceboxAddr[idx];NimBLEAddress target(std::string(addr.c_str()),raceboxAddrType[idx]);Serial.printf("NIMBLE PROBE %s type=%u...\n",addr.c_str(),raceboxAddrType[idx]);NimBLEClient *stale=NimBLEDevice::getClientByPeerAddress(target);if(stale)NimBLEDevice::deleteClient(stale);NimBLEClient *client=NimBLEDevice::createClient();if(!client){Serial.println("PROBE FAIL: createClient");return false;}if(!client->connect(target)){Serial.println("PROBE FAIL: connect");NimBLEDevice::deleteClient(client);return false;}NimBLERemoteService *svc=client->getService("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");if(!svc){client->disconnect();NimBLEDevice::deleteClient(client);return false;}rbRx=svc->getCharacteristic("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");rbTx=svc->getCharacteristic("6E400003-B5A3-F393-E0A9-E50E24DCCA9E");if(!rbRx||!rbTx||!rbTx->canNotify()){client->disconnect();NimBLEDevice::deleteClient(client);rbRx=nullptr;rbTx=nullptr;return false;}if(!rbTx->subscribe(true,rbNotify)){client->disconnect();NimBLEDevice::deleteClient(client);rbRx=nullptr;rbTx=nullptr;return false;}rbClient=client;rbConnected=true;connectedAddr=addr;rbLeanValid=false;rbLeanDeg=0.0f;rbLeanUs=0;rbGyroBiasX=0.0f;saveRaceBox(addr);Serial.printf("RACEBOX CONNECTED %s\n",addr.c_str());return true; }
 static bool probeRaceBoxAddress(const String &addr){for(int i=0;i<raceboxCount;i++)if(raceboxAddr[i].equalsIgnoreCase(addr))return probeRaceBoxIndex(i);return false;}
-static bool connectSelectedRaceBox(){if(selectedRacebox<0||selectedRacebox>=raceboxCount)return false;return probeRaceBoxAddress(raceboxAddr[selectedRacebox]);}
+static bool connectSelectedRaceBox(){if(selectedRacebox<0||selectedracebox>=raceboxCount)return false;return probeRaceBoxAddress(raceboxAddr[selectedRacebox]);}
 static void raceBoxConnectTask(void*){int idx=connIndex;bool ok=false;if(idx>=0&&idx<raceboxCount)ok=probeRaceBoxAddress(raceboxAddr[idx]);connState=ok?CONN_OK:CONN_FAIL;vTaskDelete(NULL);}
 static void startRaceBoxConnect(int idx){if(connState==CONN_WORKING)return;connIndex=idx;connState=CONN_WORKING;xTaskCreatePinnedToCore(raceBoxConnectTask,"rb-connect",8192,nullptr,1,nullptr,0);}
 static void fmtLap(uint32_t ms,char *out,size_t n){uint32_t min=ms/60000u;ms%=60000u;uint32_t sec=ms/1000u,millisec=ms%1000u;snprintf(out,n,"%02lu:%02lu.%03lu",(unsigned long)min,(unsigned long)sec,(unsigned long)millisec);}
