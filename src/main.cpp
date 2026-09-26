@@ -97,6 +97,10 @@ static uint8_t rbFix=0,rbSats=0;
 static float rbLeanDeg=0.0f;
 static bool rbLeanValid=false;
 static uint32_t rbLeanTow=0;
+static float rbLeanGyroBias=0.0f;
+static float rbLeanAccelZero=0.0f;
+static uint16_t rbLeanCalSamples=0;
+static bool rbLeanCalibrated=false;
 static uint32_t lapStartTow=0, lapLastMs=0, lapBestMs=0;
 static int32_t lapDeltaMs=0;
 static bool lapDeltaValid=false;
@@ -141,9 +145,43 @@ static void processRaceBoxStream(){
     else if(a==fifo[6+plen]&&b==fifo[7+plen]&&fifo[2]==0xFF&&fifo[3]==0x01&&plen>=80){
       const uint8_t *p=fifo+6; uint32_t speedMm=0,tow=0;int32_t lonRaw=0,latRaw=0;int16_t gY=0,gZ=0,gyroX=0;
       memcpy(&tow,p+0,4);memcpy(&lonRaw,p+24,4);memcpy(&latRaw,p+28,4);memcpy(&speedMm,p+48,4);memcpy(&gY,p+70,2);memcpy(&gZ,p+72,2);memcpy(&gyroX,p+74,2);
-      float speedKmh=(float)speedMm*0.0036f; float accelRoll=atan2f((float)gY,(float)gZ)*57.2957795f; float lean=rbLeanDeg;
-      if(!rbLeanValid){lean=accelRoll;rbLeanValid=true;} else {uint32_t dms=tow-rbLeanTow;if(dms>0&&dms<250u){float dt=dms*0.001f;lean+=(float)gyroX*0.01f*dt;if(speedKmh<8.0f)lean=0.96f*lean+0.04f*accelRoll;}}
-      if(lean>89.9f)lean=89.9f;if(lean<-89.9f)lean=-89.9f;rbLeanTow=tow;
+      float speedKmh=(float)speedMm*0.0036f;
+      float accelRoll=atan2f((float)gY,(float)gZ)*57.2957795f;
+      float gyroDps=(float)gyroX*0.01f;
+      float lean=rbLeanDeg;
+      bool stationary=speedKmh<3.0f;
+
+      // Automatic zero/bias calibration while stationary. This removes the observed
+      // installation offset (about -4.6 deg on a flat surface) without hard-coding it.
+      if(stationary){
+        if(rbLeanCalSamples==0){rbLeanAccelZero=accelRoll;rbLeanGyroBias=gyroDps;}
+        else{
+          rbLeanAccelZero=0.98f*rbLeanAccelZero+0.02f*accelRoll;
+          rbLeanGyroBias=0.98f*rbLeanGyroBias+0.02f*gyroDps;
+        }
+        if(rbLeanCalSamples<2000)rbLeanCalSamples++;
+        if(rbLeanCalSamples>=25)rbLeanCalibrated=true;
+      }
+
+      if(!rbLeanValid){
+        lean=0.0f;
+        rbLeanValid=true;
+      }else{
+        uint32_t dms=tow-rbLeanTow;
+        if(dms>0&&dms<250u){
+          float dt=dms*0.001f;
+          float correctedGyro=gyroDps-rbLeanGyroBias;
+          lean+=correctedGyro*dt;
+          // Only use gravity as a long-term reference while nearly stationary.
+          // During riding, accelerometer forces are not interpreted as lean.
+          if(stationary&&rbLeanCalibrated){
+            float accelLean=accelRoll-rbLeanAccelZero;
+            lean=0.90f*lean+0.10f*accelLean;
+            if(fabsf(correctedGyro)<0.8f&&fabsf(accelLean)<2.0f)lean*=0.92f;
+          }
+        }
+      }
+      if(lean>75.0f)lean=75.0f;if(lean<-75.0f)lean=-75.0f;rbLeanTow=tow;
       portENTER_CRITICAL(&rbDataMux);rbTowMs=tow;rbLon=(double)lonRaw/10000000.0;rbLat=(double)latRaw/10000000.0;rbFix=p[20];rbSats=p[23];rbSpeedKmh=speedKmh;rbLeanDeg=lean;rbLivePackets++;rbLiveValid=true;portEXIT_CRITICAL(&rbDataMux);
     }
     memmove(fifo,fifo+fl,fifoLen-fl);fifoLen-=fl;
