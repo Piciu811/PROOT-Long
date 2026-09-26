@@ -1,0 +1,69 @@
+name: Patch stopped LEAN max display
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/patch-stop-lean-max.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch LEAN session maxima and stopped display
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('src/main.cpp')
+          s=p.read_text()
+
+          old='static bool measurementActive=false;\nstatic bool measurementLocked=false;'
+          new='static bool measurementActive=false;\nstatic bool measurementLocked=false;\nstatic float sessionLeanMin=0.0f,sessionLeanMax=0.0f;'
+          if old not in s: raise SystemExit('globals target not found')
+          s=s.replace(old,new,1)
+
+          old='portENTER_CRITICAL(&rbDataMux);rbTowMs=tow;rbLon=(double)lonRaw/10000000.0;rbLat=(double)latRaw/10000000.0;rbFix=p[20];rbSats=p[23];rbSpeedKmh=speedKmh;rbLeanDeg=lean;rbLivePackets++;rbLiveValid=true;portEXIT_CRITICAL(&rbDataMux);'
+          new='if(measurementActive){if(lean<sessionLeanMin)sessionLeanMin=lean;if(lean>sessionLeanMax)sessionLeanMax=lean;}portENTER_CRITICAL(&rbDataMux);rbTowMs=tow;rbLon=(double)lonRaw/10000000.0;rbLat=(double)latRaw/10000000.0;rbFix=p[20];rbSats=p[23];rbSpeedKmh=speedKmh;rbLeanDeg=lean;rbLivePackets++;rbLiveValid=true;portEXIT_CRITICAL(&rbDataMux);'
+          if old not in s: raise SystemExit('lean update target not found')
+          s=s.replace(old,new,1)
+
+          old='measurementActive=true;measurementLocked=false;rbRequestRecording(true);lapCount=0;'
+          new='measurementActive=true;measurementLocked=false;sessionLeanMin=0.0f;sessionLeanMax=0.0f;rbRequestRecording(true);lapCount=0;'
+          if old not in s: raise SystemExit('S/M start target not found')
+          s=s.replace(old,new,1)
+
+          old='measurementActive=true;timingStopped=false;lapClockRunning=true;lapStartTow=tow;'
+          new='measurementActive=true;timingStopped=false;sessionLeanMin=0.0f;sessionLeanMax=0.0f;lapClockRunning=true;lapStartTow=tow;'
+          if old not in s: raise SystemExit('physical start target not found')
+          s=s.replace(old,new,1)
+
+          old='measurementActive=false;measurementLocked=false;lapClockRunning=false;timingStopped=false;lapCount=0;'
+          new='measurementActive=false;measurementLocked=false;sessionLeanMin=0.0f;sessionLeanMax=0.0f;lapClockRunning=false;timingStopped=false;lapCount=0;'
+          if old not in s: raise SystemExit('session reset target not found')
+          s=s.replace(old,new,1)
+
+          old='''  }else{int first=(int)lapHistoryPage*3;for(int row=0;row<3;row++){int idx=first+row,y=8+row*55;if(idx>=lapHistoryN)break;char no[4],tm[16];snprintf(no,sizeof(no,"%02d",idx+1);fmtLap(lapHistory[idx],tm,sizeof(tm));uint16_t lc=(lapHistory[idx]&&lapHistory[idx]==lapBestMs)?green:white;num(382,y,no,3,yellow);num(424,y,tm,3,lc);}if(lapHistoryN>3){rect(590,0,50,60,darkgray);rect(590,120,50,60,darkgray);text5(602,8,"UP",1,white);text5(602,158,"DN",1,white);}}'''
+          # tolerate exact source by locating compact stopped block instead
+          start=s.find('  }else{int first=(int)lapHistoryPage*3;')
+          end=s.find('\n  rect(12,115,70,60,darkgray);',start)
+          if start<0 or end<0: raise SystemExit('stopped display block not found')
+          block=s[start:end]
+          if not block.endswith('}'):
+              raise SystemExit('unexpected stopped block')
+          add='char leanMinTxt[12],leanMaxTxt[12];snprintf(leanMinTxt,sizeof(leanMinTxt),"%.1f",sessionLeanMin);snprintf(leanMaxTxt,sizeof(leanMaxTxt),"%+.1f",sessionLeanMax);num(382,158,leanMinTxt,2,lightgray);text5(452,158,"LEAN",2,yellow);num(518,158,leanMaxTxt,2,lightgray);'
+          block_new=block[:-1]+add+'}'
+          s=s[:start]+block_new+s[end:]
+
+          p.write_text(s)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/main.cpp
+          git commit -m 'Show session LEAN maxima after stop'
+          git push
