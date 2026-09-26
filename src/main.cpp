@@ -140,10 +140,11 @@ static void processRaceBoxStream(){
   while(fifoLen>=8){ size_t s=0;while(s+1<fifoLen&&!(fifo[s]==0xB5&&fifo[s+1]==0x62))s++;if(s){memmove(fifo,fifo+s,fifoLen-s);fifoLen-=s;if(fifoLen<8)break;}uint16_t plen=(uint16_t)fifo[4]|((uint16_t)fifo[5]<<8);size_t fl=(size_t)plen+8;if(fl>sizeof(fifo)){fifoLen=0;break;}if(fifoLen<fl)break;uint8_t a=0,b=0;for(size_t i=2;i<6u+plen;i++){a=(uint8_t)(a+fifo[i]);b=(uint8_t)(b+a);}
     if(a==fifo[6+plen]&&b==fifo[7+plen]&&fifo[2]==0xFF&&(fifo[3]==0x02||fifo[3]==0x03)&&plen>=2){const bool ack=fifo[3]==0x02;const uint8_t ackCls=fifo[6],ackId=fifo[7];Serial.printf("RB %s %02X/%02X\n",ack?"ACK":"NACK",ackCls,ackId);if(ackCls==0xFF&&ackId==0x30&&rbRecordPending!=RB_REC_NONE){RbRecordPending cmd=rbRecordPending;rbRecordPending=RB_REC_NONE;if(ack)rbSendRecordingConfig(cmd==RB_REC_START);}}
     else if(a==fifo[6+plen]&&b==fifo[7+plen]&&fifo[2]==0xFF&&fifo[3]==0x01&&plen>=80){
-      const uint8_t *p=fifo+6; uint32_t speedMm=0,tow=0;int32_t lonRaw=0,latRaw=0;int16_t gY=0,gZ=0,gyroX=0;
-      memcpy(&tow,p+0,4);memcpy(&lonRaw,p+24,4);memcpy(&latRaw,p+28,4);memcpy(&speedMm,p+48,4);memcpy(&gY,p+70,2);memcpy(&gZ,p+72,2);memcpy(&gyroX,p+74,2);
+      const uint8_t *p=fifo+6; uint32_t speedMm=0,tow=0;int32_t lonRaw=0,latRaw=0;int16_t gX=0,gY=0,gZ=0,gyroX=0;
+      memcpy(&tow,p+0,4);memcpy(&lonRaw,p+24,4);memcpy(&latRaw,p+28,4);memcpy(&speedMm,p+48,4);memcpy(&gX,p+68,2);memcpy(&gY,p+70,2);memcpy(&gZ,p+72,2);memcpy(&gyroX,p+74,2);
       float speedKmh=(float)speedMm*0.0036f;
-      float accelRoll=atan2f((float)gY,(float)gZ)*57.2957795f;
+      float gx=(float)gX,gy=(float)gY,gz=(float)gZ;
+      float accelRoll=atan2f(gy,sqrtf(gx*gx+gz*gz))*57.2957795f;
       float rawGyroRate=(float)gyroX*0.01f;
       uint32_t nowUs=micros();
       float lean=rbLeanDeg;
