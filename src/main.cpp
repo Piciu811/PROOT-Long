@@ -177,7 +177,9 @@ static void parseWiredGpsSentence(char *line){
 static void processWiredGps(){
   if(!wiredGpsMode||!wiredGpsStarted)return;
   while(GPS.available()){char c=(char)GPS.read();if(c==10){if(wiredGpsLineLen){wiredGpsLine[wiredGpsLineLen]=0;parseWiredGpsSentence(wiredGpsLine);wiredGpsLineLen=0;}}else if(c!=13){if(wiredGpsLineLen+1<sizeof(wiredGpsLine))wiredGpsLine[wiredGpsLineLen++]=c;else wiredGpsLineLen=0;}}
-  if(wiredGpsLastDataMs&&millis()-wiredGpsLastDataMs>1500u){portENTER_CRITICAL(&rbDataMux);rbFix=0;rbSats=0;portEXIT_CRITICAL(&rbDataMux);}
+  uint32_t now=millis();
+  portENTER_CRITICAL(&rbDataMux);rbTowMs=now;portEXIT_CRITICAL(&rbDataMux);
+  if(wiredGpsLastDataMs&&now-wiredGpsLastDataMs>1500u){portENTER_CRITICAL(&rbDataMux);rbFix=0;rbSats=0;portEXIT_CRITICAL(&rbDataMux);}
 }
 enum ConnectState : uint8_t { CONN_IDLE, CONN_WORKING, CONN_OK, CONN_FAIL };
 static volatile ConnectState connState=CONN_IDLE; static volatile int connIndex=-1; static ConnectState drawnConnState=CONN_IDLE;
