@@ -40,7 +40,7 @@ static bool wiredGpsSawUbx=false;
 static bool wiredGpsMonVerSent=false;
 static uint32_t wiredGpsBaudProbeStartedMs=0;
 static uint32_t wiredGpsProbeBytes=0;
-static uint32_t wiredGpsActiveBaud=GPS_BAUD;
+static uint32_t wiredGpsActiveBaud=38400u;
 static char wiredGpsLine[160];
 static size_t wiredGpsLineLen=0;
 #define GPS_RX_PIN 44
