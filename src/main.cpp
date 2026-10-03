@@ -166,6 +166,11 @@ static void parseWiredGpsSentence(char *line){
   }else if(nf>=8&&nmeaType(f[0],"RMC")){
     bool ok=f[2][0]=='A';if(ok&&f[3][0]&&f[5][0]){lat=parseNmeaCoord(f[3],f[4][0]);lon=parseNmeaCoord(f[5],f[6][0]);speed=(float)(atof(f[7])*1.852);if(fix<2)fix=2;}else if(!ok)fix=0;
     changed=true;
+  }else if(nf>=8&&nmeaType(f[0],"GNS")){
+    bool ok=f[6]&&f[6][0]&&strchr(f[6],'N')==nullptr;
+    sats=(uint8_t)constrain(atoi(f[7]),0,255);fix=ok?2:0;
+    if(ok&&f[2][0]&&f[4][0]){lat=parseNmeaCoord(f[2],f[3][0]);lon=parseNmeaCoord(f[4],f[5][0]);}
+    changed=true;
   }
   if(changed){uint32_t now=millis();wiredGpsLastDataMs=now;portENTER_CRITICAL(&rbDataMux);rbLat=lat;rbLon=lon;rbSpeedKmh=speed;rbFix=fix;rbSats=sats;rbTowMs=now;rbLivePackets++;rbLiveValid=true;portEXIT_CRITICAL(&rbDataMux);}
 }
@@ -257,7 +262,7 @@ static void drawRaceBoxLive(){
   char lapNo[3];snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));text5(243,156,"LAP",2,yellow);numTallBold(288,122,lapNo,7,7,yellow);uint16_t darkgray=C(0x2104);if(touchLocked)text5(303,88,"RAIN",2,white);
   if(!timingStopped){char lt[16],bt[16],dt[16];fmtLap(lapLastMs,lt,sizeof(lt));fmtLap(lapBestMs,bt,sizeof(bt));if(lapDeltaValid)fmtDelta(lapDeltaMs,dt,sizeof(dt));else snprintf(dt,sizeof(dt),"+0.000");numTallBold(370,4,dt,7,10,lapDeltaValid?(lapDeltaMs<=0?green:red):white);text5(382,119,"L",3,white);num(422,113,lt,4,white);text5(382,153,"B",3,green);num(422,147,bt,4,green);
   }else{int first=(int)lapHistoryPage*3;for(int row=0;row<3;row++){int idx=first+row,y=8+row*55;if(idx>=lapHistoryN)break;char no[4],tm[16];snprintf(no,sizeof(no),"%02d",idx+1);fmtLap(lapHistory[idx],tm,sizeof(tm));uint16_t lc=(lapHistory[idx]&&lapHistory[idx]==lapBestMs)?green:white;num(382,y,no,3,yellow);num(424,y,tm,3,lc);}if(lapHistoryN>3){rect(590,0,50,60,darkgray);rect(590,120,50,60,darkgray);text5(602,8,"UP",1,white);text5(602,158,"DN",1,white);}if(!wiredGpsMode){char leanMinTxt[12],leanMaxTxt[12];snprintf(leanMinTxt,sizeof(leanMinTxt),"%.1f",sessionLeanMin);snprintf(leanMaxTxt,sizeof(leanMaxTxt),"%+.1f",sessionLeanMax);num(382,158,leanMinTxt,2,lightgray);text5(452,158,"LEAN",2,yellow);num(518,158,leanMaxTxt,2,lightgray);}}
-  rect(12,115,70,60,darkgray);uint16_t smCol=(lapClockRunning&&customLineValid)?green:red;text5(17,145,"START",2,smCol);rect(88,115,70,60,darkgray);text5(103,122,"SAT",2,(fix>=2&&sats>0)?green:red);text5(103,151,"REC",2,(!wiredGpsMode&&rbRecordingOn)?green:red);rect(164,115,70,60,darkgray);text5(171,145,"STOP",2,white);present();
+  rect(12,115,70,60,darkgray);uint16_t smCol=(lapClockRunning&&customLineValid)?green:red;text5(17,145,"START",2,smCol);rect(88,115,70,60,darkgray);text5(103,122,"SAT",2,(wiredGpsMode?(fix>=2):(fix>=2&&sats>0))?green:red);text5(103,151,"REC",2,(!wiredGpsMode&&rbRecordingOn)?green:red);rect(164,115,70,60,darkgray);text5(171,145,"STOP",2,white);present();
 }
 static bool readTouch(int &lx,int &ly){uint8_t cmd[8]={0xb5,0xab,0xa5,0x5a,0,0,0,8},b[14]={0};Wire.beginTransmission(TOUCH_ADDR);Wire.write(cmd,8);if(Wire.endTransmission()!=0)return false;if(Wire.requestFrom(TOUCH_ADDR,14)!=(size_t)14)return false;Wire.readBytes(b,14);if(!b[1]||b[0])return false;int nx=((b[2]&0x0F)<<8)|b[3],ny=((b[4]&0x0F)<<8)|b[5];lx=639-nx;ly=179-ny;lx=constrain(lx,0,639);ly=constrain(ly,0,179);return true;}
 static void drawLastDevicePrompt(){uint16_t black=C(0x0000),white=C(0xFFFF),green=C(0x07E0),red=C(0xF800),gray=C(0x4208);for(size_t i=0;i<180u*640u;i++)screen[i]=black;text5(92,22,"CONNECT TO LAST DEVICE",3,white);if(savedRaceboxIndex>=0&&savedRaceboxIndex<raceboxCount){String id="";for(int k=0;k<raceboxes[savedRaceboxIndex].length();k++)if(isDigit(raceboxes[savedRaceboxIndex][k]))id+=raceboxes[savedRaceboxIndex][k];if(id.length()>10)id=id.substring(id.length()-10);if(id.length())num(248,62,id.c_str(),3,gray);}rect(70,108,220,54,green);text5(145,122,"YES",4,black);rect(350,108,220,54,red);text5(435,122,"NO",4,white);present();}
