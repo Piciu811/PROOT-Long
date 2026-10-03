@@ -36,7 +36,6 @@ static uint32_t lastUiActivityMs=0;
 static uint8_t backlightPct=70;
 static void setBacklightPercent(uint8_t pct){if(pct>100)pct=100;if(pct==backlightPct)return;backlightPct=pct;ledcWrite(TFT_BL_LEDC_CH,(uint32_t)pct*255u/100u);}
 static void noteUiActivity(){lastUiActivityMs=millis();}
-static void updateBacklight(){uint8_t target=70;if(timingStopped){uint32_t idle=millis()-lastUiActivityMs;if(idle>=120000u)target=0;else if(idle>=60000u)target=10;else target=40;}setBacklightPercent(target);}
 static inline uint16_t C(uint16_t v){ return (uint16_t)((v<<8)|(v>>8)); }
 
 static void rect(int x,int y,int w,int h,uint16_t c){
@@ -114,6 +113,7 @@ static const uint8_t LAP_HISTORY_MAX=99;
 static uint32_t lapHistory[LAP_HISTORY_MAX]={0};
 static uint8_t lapHistoryN=0,lapHistoryPage=0;
 static bool timingStopped=false;
+static void updateBacklight(){uint8_t target=70;if(timingStopped){uint32_t idle=millis()-lastUiActivityMs;if(idle>=120000u)target=0;else if(idle>=60000u)target=10;else target=40;}setBacklightPercent(target);}
 static bool measurementActive=false;
 static bool measurementLocked=false;
 static float sessionLeanMin=0.0f,sessionLeanMax=0.0f;
