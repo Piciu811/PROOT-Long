@@ -176,7 +176,7 @@ static bool nmeaChecksumOk(const char *line){if(!line||line[0]!=36)return false;
 static bool nmeaType(const char *field,const char *type){size_t n=strlen(field);return n>=3&&strcmp(field+n-3,type)==0;}
 static void parseWiredGpsSentence(char *line){
   if(!nmeaChecksumOk(line))return;
-  wiredGpsSentenceCount++;
+  wiredGpsSentenceCount++;wiredGpsProbeValidSentences++;
   char *star=strchr(line,'*');if(star)*star=0;
   char *f[20]={0};int nf=0;char *p=line;while(p&&nf<20){f[nf++]=p;char *c=strchr(p,',');if(!c)break;*c=0;p=c+1;}
   bool changed=false;double lat=0,lon=0;float speed=0;uint8_t fix=0,sats=0;
@@ -205,7 +205,7 @@ static void processWiredGps(){
   while(GPS.available()){
     uint8_t u=(uint8_t)GPS.read();
     wiredGpsByteCount++;wiredGpsProbeBytes++;
-    if(prev==0xB5&&u==0x62){wiredGpsSawUbx=true;wiredGpsUbxCount++;}
+    if(prev==0xB5&&u==0x62){wiredGpsSawUbx=true;wiredGpsUbxCount++;wiredGpsProbeUbxSync++;}
     prev=u;
     if(u==36){
       wiredGpsDollarCount++;wiredGpsInNmea=true;wiredGpsLineLen=0;
@@ -235,14 +235,17 @@ static void processWiredGps(){
     wiredGpsGnsHz=(uint8_t)min(99u,(uint32_t)wiredGpsGnsCount*1000u/dt);
     wiredGpsByteCount=0;wiredGpsSentenceCount=0;wiredGpsDollarCount=0;wiredGpsUbxCount=0;wiredGpsRmcCount=wiredGpsGgaCount=wiredGpsGnsCount=0;wiredGpsDiagWindowMs=now;
   }
-  if(wiredGpsBaudProbeStartedMs&&now-wiredGpsBaudProbeStartedMs>=1800u&&wiredGpsProbeBytes==0){
-    if(wiredGpsActiveBaud==38400u){
-      GPS.end();delay(20);GPS.begin(115200,SERIAL_8N1,GPS_RX_PIN,GPS_TX_PIN);wiredGpsActiveBaud=115200u;wiredGpsBaudProbeStartedMs=now;wiredGpsProbeBytes=0;wiredGpsLineLen=0;
-    }else{
-      wiredGpsBaudProbeStartedMs=0;
+  if(!wiredGpsBaudLocked&&wiredGpsBaudProbeStartedMs){
+    if(wiredGpsProbeValidSentences>0||wiredGpsProbeUbxSync>0){
+      wiredGpsBaudLocked=true;wiredGpsBaudProbeStartedMs=0;
+    }else if(now-wiredGpsBaudProbeStartedMs>=2200u){
+      static const uint32_t probeBauds[]={38400u,115200u,9600u,57600u,19200u,230400u};
+      wiredGpsBaudProbeIndex=(uint8_t)((wiredGpsBaudProbeIndex+1u)%(sizeof(probeBauds)/sizeof(probeBauds[0])));
+      wiredGpsActiveBaud=probeBauds[wiredGpsBaudProbeIndex];
+      GPS.end();delay(20);GPS.begin(wiredGpsActiveBaud,SERIAL_8N1,GPS_RX_PIN,GPS_TX_PIN);
+      wiredGpsBaudProbeStartedMs=now;wiredGpsProbeBytes=0;wiredGpsProbeValidSentences=0;wiredGpsProbeUbxSync=0;
+      wiredGpsLineLen=0;wiredGpsInNmea=false;
     }
-  }else if(wiredGpsProbeBytes>0&&wiredGpsBaudProbeStartedMs){
-    wiredGpsBaudProbeStartedMs=0;
   }
   if(wiredGpsLastDataMs&&now-wiredGpsLastDataMs>1500u){portENTER_CRITICAL(&rbDataMux);rbFix=0;rbSats=0;portEXIT_CRITICAL(&rbDataMux);}
 }
@@ -304,7 +307,7 @@ static bool probeRaceBoxAddress(const String &addr){for(int i=0;i<raceboxCount;i
 static bool connectSelectedRaceBox(){if(selectedRacebox<0||selectedRacebox>=raceboxCount)return false;return probeRaceBoxAddress(raceboxAddr[selectedRacebox]);}
 static void raceBoxConnectTask(void*){int idx=connIndex;bool ok=false;if(idx>=0&&idx<raceboxCount)ok=probeRaceBoxAddress(raceboxAddr[idx]);connState=ok?CONN_OK:CONN_FAIL;vTaskDelete(NULL);}
 static void startRaceBoxConnect(int idx){if(connState==CONN_WORKING)return;connIndex=idx;connState=CONN_WORKING;xTaskCreatePinnedToCore(raceBoxConnectTask,"rb-connect",8192,nullptr,1,nullptr,0);}
-static void startWiredGps(){wiredGpsMode=true;connIndex=-1;rbConnected=true;connState=CONN_OK;rbRecordingOn=false;rbRecordPending=RB_REC_NONE;wiredGpsLastDataMs=0;wiredGpsLineLen=0;wiredGpsDiagWindowMs=millis();wiredGpsByteCount=0;wiredGpsBytesPerSec=0;wiredGpsSentenceCount=0;wiredGpsSentencesPerSec=0;wiredGpsDollarCount=0;wiredGpsDollarsPerSec=0;wiredGpsUbxCount=0;wiredGpsUbxPerSec=0;wiredGpsInNmea=false;wiredGpsRmcCount=wiredGpsGgaCount=wiredGpsGnsCount=0;wiredGpsRmcHz=wiredGpsGgaHz=wiredGpsGnsHz=0;wiredGpsSawUbx=false;wiredGpsMonVerSent=false;wiredGpsActiveBaud=GPS_BAUD;wiredGpsBaudProbeStartedMs=millis();wiredGpsProbeBytes=0;portENTER_CRITICAL(&rbDataMux);rbFix=0;rbSats=0;rbSpeedKmh=0;rbLiveValid=false;rbTowMs=millis();portEXIT_CRITICAL(&rbDataMux);if(wiredGpsStarted)GPS.end();GPS.begin(GPS_BAUD,SERIAL_8N1,GPS_RX_PIN,GPS_TX_PIN);wiredGpsStarted=true;delay(100);Serial.printf("WIRED GPS diagnostics RX=%d TX=%d baud=%d\n",GPS_RX_PIN,GPS_TX_PIN,GPS_BAUD);}
+static void startWiredGps(){wiredGpsMode=true;connIndex=-1;rbConnected=true;connState=CONN_OK;rbRecordingOn=false;rbRecordPending=RB_REC_NONE;wiredGpsLastDataMs=0;wiredGpsLineLen=0;wiredGpsDiagWindowMs=millis();wiredGpsByteCount=0;wiredGpsBytesPerSec=0;wiredGpsSentenceCount=0;wiredGpsSentencesPerSec=0;wiredGpsDollarCount=0;wiredGpsDollarsPerSec=0;wiredGpsUbxCount=0;wiredGpsUbxPerSec=0;wiredGpsInNmea=false;wiredGpsRmcCount=wiredGpsGgaCount=wiredGpsGnsCount=0;wiredGpsRmcHz=wiredGpsGgaHz=wiredGpsGnsHz=0;wiredGpsSawUbx=false;wiredGpsMonVerSent=false;wiredGpsActiveBaud=GPS_BAUD;wiredGpsBaudProbeIndex=0;wiredGpsBaudLocked=false;wiredGpsBaudProbeStartedMs=millis();wiredGpsProbeBytes=0;wiredGpsProbeValidSentences=0;wiredGpsProbeUbxSync=0;portENTER_CRITICAL(&rbDataMux);rbFix=0;rbSats=0;rbSpeedKmh=0;rbLiveValid=false;rbTowMs=millis();portEXIT_CRITICAL(&rbDataMux);if(wiredGpsStarted)GPS.end();GPS.begin(GPS_BAUD,SERIAL_8N1,GPS_RX_PIN,GPS_TX_PIN);wiredGpsStarted=true;delay(100);Serial.printf("WIRED GPS diagnostics RX=%d TX=%d baud=%d\n",GPS_RX_PIN,GPS_TX_PIN,GPS_BAUD);}
 static void fmtLap(uint32_t ms,char *out,size_t n){uint32_t min=ms/60000u;ms%=60000u;uint32_t sec=ms/1000u,millisec=ms%1000u;snprintf(out,n,"%02lu:%02lu.%03lu",(unsigned long)min,(unsigned long)sec,(unsigned long)millisec);}
 static void fmtDelta(int32_t ms,char *out,size_t n){char sign=ms<=0?'-':'+';uint32_t a=(uint32_t)(ms<0?-ms:ms);snprintf(out,n,"%c%lu.%03lu",sign,(unsigned long)(a/1000u),(unsigned long)(a%1000u));}
 static double localX(double lon,double lat0){return lon*111320.0*cos(lat0*0.017453292519943295);} static double localY(double lat){return lat*110540.0;}
@@ -326,7 +329,7 @@ static void drawRaceBoxLive(){
   if(manualCustomLine)text5(6,6,"Custom",2,white);else if(factoryTrackActive&&factoryTrackIndex>=0){const char* p=(const char*)pgm_read_ptr(&PROOT_TRACK_NAMES[factoryTrackIndex]);char trackName[40];strncpy_P(trackName,p,sizeof(trackName)-1);trackName[sizeof(trackName)-1]=0;text5(6,6,trackName,2,white);}
   char lap[16];uint32_t elapsed=(lapClockRunning&&tow>=lapStartTow)?tow-lapStartTow:0;fmtLap(elapsed,lap,sizeof(lap));bool flashActive=lapFlashStarted&&millis()-lapFlashStarted<5000u;char mainTime[16];if(timingStopped&&lapBestMs)fmtLap(lapBestMs,mainTime,sizeof(mainTime));else if(flashActive)fmtLap(lapLastMs,mainTime,sizeof(mainTime));else snprintf(mainTime,sizeof(mainTime),"%s",lap);uint16_t mainCol=(timingStopped&&lapBestMs)?green:((flashActive&&lapLastMs&&lapLastMs==lapBestMs)?green:white);
   if(flashActive){for(size_t i=0;i<180u*640u;i++)screen[i]=black;numTallBold(128,44,mainTime,8,13,mainCol);present();return;}numTallBold(6,48,mainTime,5,9,mainCol);
-  char lapNo[3];snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));text5(243,156,"LAP",2,yellow);numTallBold(288,122,lapNo,7,7,yellow);uint16_t darkgray=C(0x2104);if(touchLocked)text5(303,88,"RAIN",2,white);if(wiredGpsMode){char d[8];text5(205,6,"B",1,white);snprintf(d,sizeof(d),"%lu",(unsigned long)wiredGpsBytesPerSec);num(217,4,d,2,wiredGpsBytesPerSec?green:red);text5(277,6,"D",1,white);snprintf(d,sizeof(d),"%u",(unsigned)wiredGpsDollarsPerSec);num(289,4,d,2,wiredGpsDollarsPerSec?green:red);text5(327,6,"S",1,white);snprintf(d,sizeof(d),"%u",(unsigned)wiredGpsSentencesPerSec);num(339,4,d,2,wiredGpsSentencesPerSec?green:red);text5(377,6,"U",1,white);snprintf(d,sizeof(d),"%u",(unsigned)wiredGpsUbxPerSec);num(389,4,d,2,wiredGpsUbxPerSec?green:red);snprintf(d,sizeof(d),"%lu",(unsigned long)(wiredGpsActiveBaud==115200u?115u:38u));num(435,4,d,2,yellow);}
+  char lapNo[3];snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));text5(243,156,"LAP",2,yellow);numTallBold(288,122,lapNo,7,7,yellow);uint16_t darkgray=C(0x2104);if(touchLocked)text5(303,88,"RAIN",2,white);if(wiredGpsMode){char d[8];text5(205,6,"B",1,white);snprintf(d,sizeof(d),"%lu",(unsigned long)wiredGpsBytesPerSec);num(217,4,d,2,wiredGpsBytesPerSec?green:red);text5(277,6,"D",1,white);snprintf(d,sizeof(d),"%u",(unsigned)wiredGpsDollarsPerSec);num(289,4,d,2,wiredGpsDollarsPerSec?green:red);text5(327,6,"S",1,white);snprintf(d,sizeof(d),"%u",(unsigned)wiredGpsSentencesPerSec);num(339,4,d,2,wiredGpsSentencesPerSec?green:red);text5(377,6,"U",1,white);snprintf(d,sizeof(d),"%u",(unsigned)wiredGpsUbxPerSec);num(389,4,d,2,wiredGpsUbxPerSec?green:red);snprintf(d,sizeof(d),"%lu",(unsigned long)(wiredGpsActiveBaud/1000u));num(435,4,d,2,wiredGpsBaudLocked?green:yellow);}
   if(!timingStopped){char lt[16],bt[16],dt[16];fmtLap(lapLastMs,lt,sizeof(lt));fmtLap(lapBestMs,bt,sizeof(bt));if(lapDeltaValid)fmtDelta(lapDeltaMs,dt,sizeof(dt));else snprintf(dt,sizeof(dt),"+0.000");numTallBold(370,4,dt,7,10,lapDeltaValid?(lapDeltaMs<=0?green:red):white);text5(382,119,"L",3,white);num(422,113,lt,4,white);text5(382,153,"B",3,green);num(422,147,bt,4,green);
   }else{int first=(int)lapHistoryPage*3;for(int row=0;row<3;row++){int idx=first+row,y=8+row*55;if(idx>=lapHistoryN)break;char no[4],tm[16];snprintf(no,sizeof(no),"%02d",idx+1);fmtLap(lapHistory[idx],tm,sizeof(tm));uint16_t lc=(lapHistory[idx]&&lapHistory[idx]==lapBestMs)?green:white;num(382,y,no,3,yellow);num(424,y,tm,3,lc);}if(lapHistoryN>3){rect(590,0,50,60,darkgray);rect(590,120,50,60,darkgray);text5(602,8,"UP",1,white);text5(602,158,"DN",1,white);}if(!wiredGpsMode){char leanMinTxt[12],leanMaxTxt[12];snprintf(leanMinTxt,sizeof(leanMinTxt),"%.1f",sessionLeanMin);snprintf(leanMaxTxt,sizeof(leanMaxTxt),"%+.1f",sessionLeanMax);num(382,158,leanMinTxt,2,lightgray);text5(452,158,"LEAN",2,yellow);num(518,158,leanMaxTxt,2,lightgray);}}
   rect(12,115,70,60,darkgray);uint16_t smCol=(lapClockRunning&&customLineValid)?green:red;text5(17,145,"START",2,smCol);rect(88,115,70,60,darkgray);text5(103,122,"SAT",2,(wiredGpsMode?(fix>=2):(fix>=2&&sats>0))?green:red);text5(103,151,"REC",2,(!wiredGpsMode&&rbRecordingOn)?green:red);rect(164,115,70,60,darkgray);text5(171,145,"STOP",2,white);present();
