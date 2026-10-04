@@ -54,9 +54,9 @@ static size_t wiredGpsLineLen=0;
 #define GPS_RX_PIN 44
 #define GPS_TX_PIN 43
 #define GPS_BAUD 38400
-#define BTN_DN_PIN 3
-#define BTN_FUNC_PIN 5
-#define BTN_UP_PIN 7
+#define BTN_DN_PIN 4
+#define BTN_FUNC_PIN 6
+#define BTN_UP_PIN 8
 #define TOUCH_ADDR 0x3B
 #define TOUCH_SCL 10
 #define TOUCH_SDA 15
