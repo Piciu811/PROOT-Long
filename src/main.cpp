@@ -41,6 +41,7 @@ static uint16_t wiredGpsRmcCount=0,wiredGpsGgaCount=0,wiredGpsGnsCount=0;
 static uint8_t wiredGpsRmcHz=0,wiredGpsGgaHz=0,wiredGpsGnsHz=0;
 static bool wiredGpsSawUbx=false;
 static bool wiredGpsMonVerSent=false;
+static bool wiredGps10HzSent=false;
 static uint32_t wiredGpsBaudProbeStartedMs=0;
 static uint32_t wiredGpsProbeBytes=0;
 static uint16_t wiredGpsProbeValidSentences=0;
@@ -175,6 +176,19 @@ static void gpsSendUbxRaw(uint8_t cls,uint8_t id,const uint8_t *payload,uint16_t
   GPS.write(hdr,sizeof(hdr));if(plen)GPS.write(payload,plen);GPS.write(a);GPS.write(b);
 }
 static void gpsRequestMonVer(){gpsSendUbxRaw(0x0A,0x04,nullptr,0);wiredGpsMonVerSent=true;}
+static void gpsConfigure10HzRam(){
+  // UBX-CFG-VALSET v0, RAM only:
+  // CFG-RATE-MEAS (0x30210001) = 100 ms
+  // CFG-RATE-NAV  (0x30210002) = 1
+  uint8_t p[16]={
+    0x00,0x01,0x00,0x00,
+    0x01,0x00,0x21,0x30,0x64,0x00,
+    0x02,0x00,0x21,0x30,0x01,0x00
+  };
+  gpsSendUbxRaw(0x06,0x8A,p,sizeof(p));
+  wiredGps10HzSent=true;
+  Serial.println("WIRED GPS: requested 10 Hz in RAM");
+}
 static double parseNmeaCoord(const char *v,char hemi){if(!v||!*v)return 0.0;double raw=atof(v);int deg=(int)(raw/100.0);double out=(double)deg+(raw-(double)deg*100.0)/60.0;if(hemi=='S'||hemi=='W')out=-out;return out;}
 static bool nmeaChecksumOk(const char *line){if(!line||line[0]!=36)return false;const char *star=strchr(line,'*');if(!star)return true;uint8_t sum=0;for(const char *p=line+1;p<star;p++)sum^=(uint8_t)*p;char hex[3]={star[1],star[2],0};return sum==(uint8_t)strtoul(hex,nullptr,16);}
 static bool nmeaType(const char *field,const char *type){size_t n=strlen(field);return n>=3&&strcmp(field+n-3,type)==0;}
@@ -242,7 +256,7 @@ static void processWiredGps(){
   if(!wiredGpsBaudLocked&&wiredGpsBaudProbeStartedMs){
     if(wiredGpsProbeValidSentences>0||wiredGpsProbeUbxSync>0){
       wiredGpsBaudLocked=true;wiredGpsBaudProbeStartedMs=0;
-      if(wiredGpsActiveBaud==115200u&&!wiredGpsMonVerSent){gpsRequestMonVer();}
+      if(!wiredGps10HzSent){gpsConfigure10HzRam();}
     }else if(now-wiredGpsBaudProbeStartedMs>=2200u){
       static const uint32_t probeBauds[]={38400u,115200u,9600u,57600u,19200u,230400u};
       wiredGpsBaudProbeIndex=(uint8_t)((wiredGpsBaudProbeIndex+1u)%(sizeof(probeBauds)/sizeof(probeBauds[0])));
@@ -312,7 +326,7 @@ static bool probeRaceBoxAddress(const String &addr){for(int i=0;i<raceboxCount;i
 static bool connectSelectedRaceBox(){if(selectedRacebox<0||selectedRacebox>=raceboxCount)return false;return probeRaceBoxAddress(raceboxAddr[selectedRacebox]);}
 static void raceBoxConnectTask(void*){int idx=connIndex;bool ok=false;if(idx>=0&&idx<raceboxCount)ok=probeRaceBoxAddress(raceboxAddr[idx]);connState=ok?CONN_OK:CONN_FAIL;vTaskDelete(NULL);}
 static void startRaceBoxConnect(int idx){if(connState==CONN_WORKING)return;connIndex=idx;connState=CONN_WORKING;xTaskCreatePinnedToCore(raceBoxConnectTask,"rb-connect",8192,nullptr,1,nullptr,0);}
-static void startWiredGps(){wiredGpsMode=true;connIndex=-1;rbConnected=true;connState=CONN_OK;rbRecordingOn=false;rbRecordPending=RB_REC_NONE;wiredGpsLastDataMs=0;wiredGpsLineLen=0;wiredGpsDiagWindowMs=millis();wiredGpsByteCount=0;wiredGpsBytesPerSec=0;wiredGpsSentenceCount=0;wiredGpsSentencesPerSec=0;wiredGpsDollarCount=0;wiredGpsDollarsPerSec=0;wiredGpsUbxCount=0;wiredGpsUbxPerSec=0;wiredGpsInNmea=false;wiredGpsRmcCount=wiredGpsGgaCount=wiredGpsGnsCount=0;wiredGpsRmcHz=wiredGpsGgaHz=wiredGpsGnsHz=0;wiredGpsSawUbx=false;wiredGpsMonVerSent=false;wiredGpsActiveBaud=GPS_BAUD;wiredGpsBaudProbeIndex=0;wiredGpsBaudLocked=false;wiredGpsBaudProbeStartedMs=millis();wiredGpsProbeBytes=0;wiredGpsProbeValidSentences=0;wiredGpsProbeUbxSync=0;portENTER_CRITICAL(&rbDataMux);rbFix=0;rbSats=0;rbSpeedKmh=0;rbLiveValid=false;rbTowMs=millis();portEXIT_CRITICAL(&rbDataMux);if(wiredGpsStarted)GPS.end();GPS.begin(GPS_BAUD,SERIAL_8N1,GPS_RX_PIN,GPS_TX_PIN);wiredGpsStarted=true;delay(100);Serial.printf("WIRED GPS diagnostics RX=%d TX=%d baud=%d\n",GPS_RX_PIN,GPS_TX_PIN,GPS_BAUD);}
+static void startWiredGps(){wiredGpsMode=true;connIndex=-1;rbConnected=true;connState=CONN_OK;rbRecordingOn=false;rbRecordPending=RB_REC_NONE;wiredGpsLastDataMs=0;wiredGpsLineLen=0;wiredGpsDiagWindowMs=millis();wiredGpsByteCount=0;wiredGpsBytesPerSec=0;wiredGpsSentenceCount=0;wiredGpsSentencesPerSec=0;wiredGpsDollarCount=0;wiredGpsDollarsPerSec=0;wiredGpsUbxCount=0;wiredGpsUbxPerSec=0;wiredGpsInNmea=false;wiredGpsRmcCount=wiredGpsGgaCount=wiredGpsGnsCount=0;wiredGpsRmcHz=wiredGpsGgaHz=wiredGpsGnsHz=0;wiredGpsSawUbx=false;wiredGpsMonVerSent=false;wiredGps10HzSent=false;wiredGpsActiveBaud=GPS_BAUD;wiredGpsBaudProbeIndex=0;wiredGpsBaudLocked=false;wiredGpsBaudProbeStartedMs=millis();wiredGpsProbeBytes=0;wiredGpsProbeValidSentences=0;wiredGpsProbeUbxSync=0;portENTER_CRITICAL(&rbDataMux);rbFix=0;rbSats=0;rbSpeedKmh=0;rbLiveValid=false;rbTowMs=millis();portEXIT_CRITICAL(&rbDataMux);if(wiredGpsStarted)GPS.end();GPS.begin(GPS_BAUD,SERIAL_8N1,GPS_RX_PIN,GPS_TX_PIN);wiredGpsStarted=true;delay(100);Serial.printf("WIRED GPS diagnostics RX=%d TX=%d baud=%d\n",GPS_RX_PIN,GPS_TX_PIN,GPS_BAUD);}
 static void fmtLap(uint32_t ms,char *out,size_t n){uint32_t min=ms/60000u;ms%=60000u;uint32_t sec=ms/1000u,millisec=ms%1000u;snprintf(out,n,"%02lu:%02lu.%03lu",(unsigned long)min,(unsigned long)sec,(unsigned long)millisec);}
 static void fmtDelta(int32_t ms,char *out,size_t n){char sign=ms<=0?'-':'+';uint32_t a=(uint32_t)(ms<0?-ms:ms);snprintf(out,n,"%c%lu.%03lu",sign,(unsigned long)(a/1000u),(unsigned long)(a%1000u));}
 static double localX(double lon,double lat0){return lon*111320.0*cos(lat0*0.017453292519943295);} static double localY(double lat){return lat*110540.0;}
@@ -334,7 +348,7 @@ static void drawRaceBoxLive(){
   if(manualCustomLine)text5(6,6,"Custom",2,white);else if(factoryTrackActive&&factoryTrackIndex>=0){const char* p=(const char*)pgm_read_ptr(&PROOT_TRACK_NAMES[factoryTrackIndex]);char trackName[40];strncpy_P(trackName,p,sizeof(trackName)-1);trackName[sizeof(trackName)-1]=0;text5(6,6,trackName,2,white);}
   char lap[16];uint32_t displayTow=wiredGpsMode?millis():tow;uint32_t elapsed=(lapClockRunning&&displayTow>=lapStartTow)?displayTow-lapStartTow:0;fmtLap(elapsed,lap,sizeof(lap));bool flashActive=lapFlashStarted&&millis()-lapFlashStarted<5000u;char mainTime[16];if(timingStopped&&lapBestMs)fmtLap(lapBestMs,mainTime,sizeof(mainTime));else if(flashActive)fmtLap(lapLastMs,mainTime,sizeof(mainTime));else snprintf(mainTime,sizeof(mainTime),"%s",lap);uint16_t mainCol=(timingStopped&&lapBestMs)?green:((flashActive&&lapLastMs&&lapLastMs==lapBestMs)?green:white);
   if(flashActive){for(size_t i=0;i<180u*640u;i++)screen[i]=black;numTallBold(128,44,mainTime,8,13,mainCol);present();return;}numTallBold(6,48,mainTime,5,9,mainCol);
-  char lapNo[3];snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));text5(243,156,"LAP",2,yellow);numTallBold(288,122,lapNo,7,7,yellow);uint16_t darkgray=C(0x2104);if(touchLocked)text5(303,88,"RAIN",2,white);if(wiredGpsMode){char d[8];text5(205,6,"R",1,white);snprintf(d,sizeof(d),"%u",(unsigned)wiredGpsRmcHz);num(217,4,d,2,wiredGpsRmcHz?green:red);text5(255,6,"G",1,white);snprintf(d,sizeof(d),"%u",(unsigned)wiredGpsGgaHz);num(267,4,d,2,wiredGpsGgaHz?green:red);text5(305,6,"U",1,white);snprintf(d,sizeof(d),"%u",(unsigned)wiredGpsUbxPerSec);num(317,4,d,2,wiredGpsUbxPerSec?green:red);text5(355,6,"S",1,white);snprintf(d,sizeof(d),"%u",(unsigned)wiredGpsSentencesPerSec);num(367,4,d,2,wiredGpsSentencesPerSec?green:red);snprintf(d,sizeof(d),"%lu",(unsigned long)(wiredGpsActiveBaud/1000u));num(423,4,d,2,wiredGpsBaudLocked?green:yellow);}
+  char lapNo[3];snprintf(lapNo,sizeof(lapNo),"%02u",(unsigned)(lapCount%100u));text5(243,156,"LAP",2,yellow);numTallBold(288,122,lapNo,7,7,yellow);uint16_t darkgray=C(0x2104);if(touchLocked)text5(303,88,"RAIN",2,white);if(wiredGpsMode){char d[8];text5(205,6,"R",1,white);snprintf(d,sizeof(d),"%u",(unsigned)wiredGpsRmcHz);num(217,4,d,2,wiredGpsRmcHz>=8?green:(wiredGpsRmcHz?yellow:red));text5(255,6,"G",1,white);snprintf(d,sizeof(d),"%u",(unsigned)wiredGpsGgaHz);num(267,4,d,2,wiredGpsGgaHz>=8?green:(wiredGpsGgaHz?yellow:red));text5(305,6,"HZ",1,white);text5(337,6,(wiredGpsRmcHz>=8||wiredGpsGgaHz>=8)?"OK":"NO",1,(wiredGpsRmcHz>=8||wiredGpsGgaHz>=8)?green:red);snprintf(d,sizeof(d),"%lu",(unsigned long)(wiredGpsActiveBaud/1000u));num(423,4,d,2,wiredGpsBaudLocked?green:yellow);}
   if(!timingStopped){char lt[16],bt[16],dt[16];fmtLap(lapLastMs,lt,sizeof(lt));fmtLap(lapBestMs,bt,sizeof(bt));if(lapDeltaValid)fmtDelta(lapDeltaMs,dt,sizeof(dt));else snprintf(dt,sizeof(dt),"+0.000");numTallBold(370,4,dt,7,10,lapDeltaValid?(lapDeltaMs<=0?green:red):white);text5(382,119,"L",3,white);num(422,113,lt,4,white);text5(382,153,"B",3,green);num(422,147,bt,4,green);
   }else{int first=(int)lapHistoryPage*3;for(int row=0;row<3;row++){int idx=first+row,y=8+row*55;if(idx>=lapHistoryN)break;char no[4],tm[16];snprintf(no,sizeof(no),"%02d",idx+1);fmtLap(lapHistory[idx],tm,sizeof(tm));uint16_t lc=(lapHistory[idx]&&lapHistory[idx]==lapBestMs)?green:white;num(382,y,no,3,yellow);num(424,y,tm,3,lc);}if(lapHistoryN>3){rect(590,0,50,60,darkgray);rect(590,120,50,60,darkgray);text5(602,8,"UP",1,white);text5(602,158,"DN",1,white);}if(!wiredGpsMode){char leanMinTxt[12],leanMaxTxt[12];snprintf(leanMinTxt,sizeof(leanMinTxt),"%.1f",sessionLeanMin);snprintf(leanMaxTxt,sizeof(leanMaxTxt),"%+.1f",sessionLeanMax);num(382,158,leanMinTxt,2,lightgray);text5(452,158,"LEAN",2,yellow);num(518,158,leanMaxTxt,2,lightgray);}}
   rect(12,115,70,60,darkgray);uint16_t smCol=(lapClockRunning&&customLineValid)?green:red;text5(17,145,"START",2,smCol);rect(88,115,70,60,darkgray);text5(103,122,"SAT",2,(wiredGpsMode?(fix>=2):(fix>=2&&sats>0))?green:red);text5(103,151,"REC",2,(!wiredGpsMode&&rbRecordingOn)?green:red);rect(164,115,70,60,darkgray);text5(171,145,"STOP",2,white);present();
