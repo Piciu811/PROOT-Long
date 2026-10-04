@@ -41,6 +41,7 @@ static uint16_t wiredGpsRmcCount=0,wiredGpsGgaCount=0,wiredGpsGnsCount=0;
 static uint8_t wiredGpsRmcHz=0,wiredGpsGgaHz=0,wiredGpsGnsHz=0;
 static bool wiredGpsSawUbx=false;
 static bool wiredGpsMonVerSent=false;
+static bool wiredGpsNmeaFiltered=false;
 static uint32_t wiredGpsBaudProbeStartedMs=0;
 static uint32_t wiredGpsProbeBytes=0;
 static uint16_t wiredGpsProbeValidSentences=0;
@@ -175,6 +176,35 @@ static void gpsSendUbxRaw(uint8_t cls,uint8_t id,const uint8_t *payload,uint16_t
   GPS.write(hdr,sizeof(hdr));if(plen)GPS.write(payload,plen);GPS.write(a);GPS.write(b);
 }
 static void gpsRequestMonVer(){gpsSendUbxRaw(0x0A,0x04,nullptr,0);wiredGpsMonVerSent=true;}
+static void gpsFilterNmeaRam(){
+  // UBX-CFG-VALSET, RAM only. Keep only GGA + RMC on UART1.
+  // Each message rate is per navigation solution.
+  const uint32_t keys[]={
+    0x209100BBu, // GGA UART1
+    0x209100ACu, // RMC UART1
+    0x209100CAu, // GLL UART1
+    0x209100C0u, // GSA UART1
+    0x209100C5u, // GSV UART1
+    0x209100B1u, // VTG UART1
+    0x209100B6u, // GNS UART1
+    0x209100D4u, // GST UART1
+    0x209100CFu, // GRS UART1
+    0x209100D9u  // ZDA UART1
+  };
+  const uint8_t vals[]={1,1,0,0,0,0,0,0,0,0};
+  uint8_t p[4+sizeof(keys)/sizeof(keys[0])*5];
+  p[0]=0x00;p[1]=0x01;p[2]=0x00;p[3]=0x00;
+  size_t o=4;
+  for(size_t i=0;i<sizeof(keys)/sizeof(keys[0]);i++){
+    uint32_t k=keys[i];
+    p[o++]=(uint8_t)(k&0xFF);p[o++]=(uint8_t)((k>>8)&0xFF);
+    p[o++]=(uint8_t)((k>>16)&0xFF);p[o++]=(uint8_t)((k>>24)&0xFF);
+    p[o++]=vals[i];
+  }
+  gpsSendUbxRaw(0x06,0x8A,p,(uint16_t)o);
+  wiredGpsNmeaFiltered=true;
+  Serial.println("WIRED GPS: NMEA filtered to GGA+RMC in RAM");
+}
 static double parseNmeaCoord(const char *v,char hemi){if(!v||!*v)return 0.0;double raw=atof(v);int deg=(int)(raw/100.0);double out=(double)deg+(raw-(double)deg*100.0)/60.0;if(hemi=='S'||hemi=='W')out=-out;return out;}
 static bool nmeaChecksumOk(const char *line){if(!line||line[0]!=36)return false;const char *star=strchr(line,'*');if(!star)return true;uint8_t sum=0;for(const char *p=line+1;p<star;p++)sum^=(uint8_t)*p;char hex[3]={star[1],star[2],0};return sum==(uint8_t)strtoul(hex,nullptr,16);}
 static bool nmeaType(const char *field,const char *type){size_t n=strlen(field);return n>=3&&strcmp(field+n-3,type)==0;}
@@ -243,7 +273,8 @@ static void processWiredGps(){
   if(!wiredGpsBaudLocked&&wiredGpsBaudProbeStartedMs){
     if(wiredGpsProbeValidSentences>0||wiredGpsProbeUbxSync>0){
       wiredGpsBaudLocked=true;wiredGpsBaudProbeStartedMs=0;
-      // Keep receiver at its current/default navigation rate; do not reconfigure here.
+      // Keep the current navigation rate, only reduce UART1 NMEA traffic.
+      if(!wiredGpsNmeaFiltered)gpsFilterNmeaRam();
     }else if(now-wiredGpsBaudProbeStartedMs>=2200u){
       static const uint32_t probeBauds[]={38400u,115200u,9600u,57600u,19200u,230400u};
       wiredGpsBaudProbeIndex=(uint8_t)((wiredGpsBaudProbeIndex+1u)%(sizeof(probeBauds)/sizeof(probeBauds[0])));
@@ -313,7 +344,7 @@ static bool probeRaceBoxAddress(const String &addr){for(int i=0;i<raceboxCount;i
 static bool connectSelectedRaceBox(){if(selectedRacebox<0||selectedRacebox>=raceboxCount)return false;return probeRaceBoxAddress(raceboxAddr[selectedRacebox]);}
 static void raceBoxConnectTask(void*){int idx=connIndex;bool ok=false;if(idx>=0&&idx<raceboxCount)ok=probeRaceBoxAddress(raceboxAddr[idx]);connState=ok?CONN_OK:CONN_FAIL;vTaskDelete(NULL);}
 static void startRaceBoxConnect(int idx){if(connState==CONN_WORKING)return;connIndex=idx;connState=CONN_WORKING;xTaskCreatePinnedToCore(raceBoxConnectTask,"rb-connect",8192,nullptr,1,nullptr,0);}
-static void startWiredGps(){wiredGpsMode=true;connIndex=-1;rbConnected=true;connState=CONN_OK;rbRecordingOn=false;rbRecordPending=RB_REC_NONE;wiredGpsLastDataMs=0;wiredGpsLineLen=0;wiredGpsDiagWindowMs=millis();wiredGpsByteCount=0;wiredGpsBytesPerSec=0;wiredGpsSentenceCount=0;wiredGpsSentencesPerSec=0;wiredGpsDollarCount=0;wiredGpsDollarsPerSec=0;wiredGpsUbxCount=0;wiredGpsUbxPerSec=0;wiredGpsInNmea=false;wiredGpsRmcCount=wiredGpsGgaCount=wiredGpsGnsCount=0;wiredGpsRmcHz=wiredGpsGgaHz=wiredGpsGnsHz=0;wiredGpsSawUbx=false;wiredGpsMonVerSent=false;wiredGpsActiveBaud=GPS_BAUD;wiredGpsBaudProbeIndex=0;wiredGpsBaudLocked=false;wiredGpsBaudProbeStartedMs=millis();wiredGpsProbeBytes=0;wiredGpsProbeValidSentences=0;wiredGpsProbeUbxSync=0;portENTER_CRITICAL(&rbDataMux);rbFix=0;rbSats=0;rbSpeedKmh=0;rbLiveValid=false;rbTowMs=millis();portEXIT_CRITICAL(&rbDataMux);if(wiredGpsStarted)GPS.end();GPS.setRxBufferSize(8192);GPS.begin(GPS_BAUD,SERIAL_8N1,GPS_RX_PIN,GPS_TX_PIN);wiredGpsStarted=true;delay(100);Serial.printf("WIRED GPS diagnostics RX=%d TX=%d baud=%d\n",GPS_RX_PIN,GPS_TX_PIN,GPS_BAUD);}
+static void startWiredGps(){wiredGpsMode=true;connIndex=-1;rbConnected=true;connState=CONN_OK;rbRecordingOn=false;rbRecordPending=RB_REC_NONE;wiredGpsLastDataMs=0;wiredGpsLineLen=0;wiredGpsDiagWindowMs=millis();wiredGpsByteCount=0;wiredGpsBytesPerSec=0;wiredGpsSentenceCount=0;wiredGpsSentencesPerSec=0;wiredGpsDollarCount=0;wiredGpsDollarsPerSec=0;wiredGpsUbxCount=0;wiredGpsUbxPerSec=0;wiredGpsInNmea=false;wiredGpsRmcCount=wiredGpsGgaCount=wiredGpsGnsCount=0;wiredGpsRmcHz=wiredGpsGgaHz=wiredGpsGnsHz=0;wiredGpsSawUbx=false;wiredGpsMonVerSent=false;wiredGpsNmeaFiltered=false;wiredGpsActiveBaud=GPS_BAUD;wiredGpsBaudProbeIndex=0;wiredGpsBaudLocked=false;wiredGpsBaudProbeStartedMs=millis();wiredGpsProbeBytes=0;wiredGpsProbeValidSentences=0;wiredGpsProbeUbxSync=0;portENTER_CRITICAL(&rbDataMux);rbFix=0;rbSats=0;rbSpeedKmh=0;rbLiveValid=false;rbTowMs=millis();portEXIT_CRITICAL(&rbDataMux);if(wiredGpsStarted)GPS.end();GPS.setRxBufferSize(8192);GPS.begin(GPS_BAUD,SERIAL_8N1,GPS_RX_PIN,GPS_TX_PIN);wiredGpsStarted=true;delay(100);Serial.printf("WIRED GPS diagnostics RX=%d TX=%d baud=%d\n",GPS_RX_PIN,GPS_TX_PIN,GPS_BAUD);}
 static void fmtLap(uint32_t ms,char *out,size_t n){uint32_t min=ms/60000u;ms%=60000u;uint32_t sec=ms/1000u,millisec=ms%1000u;snprintf(out,n,"%02lu:%02lu.%03lu",(unsigned long)min,(unsigned long)sec,(unsigned long)millisec);}
 static void fmtDelta(int32_t ms,char *out,size_t n){char sign=ms<=0?'-':'+';uint32_t a=(uint32_t)(ms<0?-ms:ms);snprintf(out,n,"%c%lu.%03lu",sign,(unsigned long)(a/1000u),(unsigned long)(a%1000u));}
 static double localX(double lon,double lat0){return lon*111320.0*cos(lat0*0.017453292519943295);} static double localY(double lat){return lat*110540.0;}
